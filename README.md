@@ -1,6 +1,6 @@
 ![Logo](https://images.squarespace-cdn.com/content/v1/60056c48dfad4a3649200fc0/1613294634908-3HTA3TR74HYYSNEIZSIJ/UniCT-Logo.jpg?format=1000w)
 
-# Multimedia Forensics (A.A. 2025-26 Guarnera f., Guarnera L.)
+# Multimedia Forensics (A.A. 2025-26 Guarnera F., Guarnera L.)
 
 Repository creata a scopo didattico per essere utilizzata come backup dei file creati a lezione.
 
@@ -13,4 +13,3 @@ Repository creata a scopo didattico per essere utilizzata come backup dei file c
 ## Feedback
 
 If you have any feedback, please reach me at pediconegiulio02@gmail.com
-# MultimediaForensics
