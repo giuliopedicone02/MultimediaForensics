@@ -1,0 +1,91 @@
+"""Configurazione centralizzata del progetto.
+
+La configurazione è una semplice dataclass serializzabile da/verso YAML, così da
+poter essere versionata e ripresa identica su Colab. I default sono pensati per
+una T4 (16 GB) ed un dataset dell'ordine di ~1000 immagini.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import List, Optional
+
+try:
+    import yaml  # type: ignore
+except ImportError:  # pragma: no cover - yaml è in requirements, fallback difensivo
+    yaml = None
+
+
+# Ordine canonico delle classi di *attribution*. L'indice 0 è sempre "real".
+# La detection è derivata: real -> 0, qualsiasi generatore -> 1.
+DEFAULT_CLASSES: List[str] = ["real", "stylegan", "stylegan3", "sdxl"]
+
+
+@dataclass
+class Config:
+    # --- dati ---
+    data_root: str = "data"
+    classes: List[str] = field(default_factory=lambda: list(DEFAULT_CLASSES))
+    image_size: int = 224
+    max_per_class: Optional[int] = None  # None = usa tutte le immagini disponibili
+
+    # --- split (frazioni sul totale) ---
+    val_split: float = 0.15
+    test_split: float = 0.15
+
+    # --- feature extraction ---
+    backbone: str = "resnet18"          # backbone dei due stream
+    embedding_dim: int = 512            # dim. embedding di resnet18 (post global-pool)
+    fourier_log: bool = True            # log-magnitudine dello spettro
+
+    # --- classificatore multi-task ---
+    hidden_dim: int = 256
+    dropout: float = 0.3
+    epochs: int = 30
+    batch_size: int = 32
+    lr: float = 1e-3
+    weight_decay: float = 1e-4
+    attribution_weight: float = 1.0     # peso della loss di attribution
+    detection_weight: float = 1.0       # peso della loss di detection
+
+    # --- VLM agent (explainability) ---
+    vlm_model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct"
+    vlm_load_in_4bit: bool = True
+    vlm_max_new_tokens: int = 512
+    vlm_enabled: bool = True            # se False usa la spiegazione template-based
+
+    # --- runtime ---
+    seed: int = 42
+    num_workers: int = 2
+    results_dir: str = "results"
+    device: str = "auto"                # "auto" | "cuda" | "cpu"
+
+    # ------------------------------------------------------------------ helpers
+    @property
+    def num_attribution_classes(self) -> int:
+        return len(self.classes)
+
+    @property
+    def num_detection_classes(self) -> int:
+        return 2
+
+    def detection_label(self, attribution_index: int) -> int:
+        """0 se la classe è 'real', 1 altrimenti."""
+        return 0 if self.classes[attribution_index] == "real" else 1
+
+    def to_yaml(self, path: str | Path) -> None:
+        if yaml is None:
+            raise RuntimeError("PyYAML non disponibile: `pip install pyyaml`")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(asdict(self), f, sort_keys=False, allow_unicode=True)
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> "Config":
+        if yaml is None:
+            raise RuntimeError("PyYAML non disponibile: `pip install pyyaml`")
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        return cls(**known)

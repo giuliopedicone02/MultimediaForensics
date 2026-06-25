@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# Ambienti virtuali
+.venv/
+venv/
+env/
+
+# Dati e artefatti (pesanti: non versionare)
+data/*
+!data/.gitkeep
+results/*
+!results/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.npz
+*.cache
+
+# Diario di bordo privato (locale)
+WORKLOG.md
+
+# Sistema / editor
+.DS_Store
+.vscode/
+.idea/

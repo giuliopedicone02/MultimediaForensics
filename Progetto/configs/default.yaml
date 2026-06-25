@@ -1,0 +1,39 @@
+# Configurazione di default (modificabile da notebook o CLI).
+# Vedi dffa/config.py per la descrizione di ogni campo.
+
+# --- dati ---
+data_root: data
+classes: [real, stylegan, stylegan3, sdxl]
+image_size: 224
+max_per_class: null        # null = tutte; es. 250 per un test rapido
+
+# --- split ---
+val_split: 0.15
+test_split: 0.15
+
+# --- feature extraction ---
+backbone: resnet18
+embedding_dim: 512
+fourier_log: true
+
+# --- classificatore multi-task ---
+hidden_dim: 256
+dropout: 0.3
+epochs: 30
+batch_size: 32
+lr: 0.001
+weight_decay: 0.0001
+attribution_weight: 1.0
+detection_weight: 1.0
+
+# --- VLM agent ---
+vlm_model_id: Qwen/Qwen2.5-VL-3B-Instruct
+vlm_load_in_4bit: true
+vlm_max_new_tokens: 512
+vlm_enabled: true
+
+# --- runtime ---
+seed: 42
+num_workers: 2
+results_dir: results
+device: auto
