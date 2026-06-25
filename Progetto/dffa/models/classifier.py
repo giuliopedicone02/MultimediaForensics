@@ -55,6 +55,7 @@ class MultiTaskClassifier(nn.Module):
     @torch.no_grad()
     def predict(self, embeddings: torch.Tensor) -> dict:
         """Probabilità e classi predette per entrambe le teste."""
+        self.eval()  # BatchNorm su running stats: sicuro anche con batch di 1
         out = self.forward(embeddings)
         det_p = torch.softmax(out.detection_logits, dim=1)
         attr_p = torch.softmax(out.attribution_logits, dim=1)

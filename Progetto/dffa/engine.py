@@ -65,7 +65,9 @@ def extract_embeddings(
 
 def _loader_from_blob(blob: Dict[str, torch.Tensor], cfg: Config, shuffle: bool):
     ds = TensorDataset(blob["embeddings"], blob["detection"], blob["attribution"])
-    return DataLoader(ds, batch_size=cfg.batch_size, shuffle=shuffle)
+    # drop_last in training: evita un batch finale di dimensione 1 che farebbe
+    # fallire la BatchNorm1d del classificatore.
+    return DataLoader(ds, batch_size=cfg.batch_size, shuffle=shuffle, drop_last=shuffle)
 
 
 # --------------------------------------------------------------------------- #
