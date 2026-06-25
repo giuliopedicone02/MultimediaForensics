@@ -30,17 +30,28 @@ Gli embedding vengono concatenati: `[emb_rgb (512) | emb_fourier (512)] = 1024-d
 > Poiché i backbone sono congelati, gli embedding sono pre-calcolati una volta e
 > messi in cache (`dffa/engine.py`). Il training successivo è velocissimo.
 
-## 3. Classificatore multi-task
+## 3. Classificatore a cascata
 
 MLP con tronco condiviso (2 layer `Linear+BN+ReLU+Dropout`) e due teste lineari:
 
-- **Detection** (2 classi): `real` vs `fake`.
-- **Attribution** (K classi): `real` + generatori.
+- **Detection** (2 classi): `real` vs `fake` — addestrata su *tutti* i campioni.
+- **Attribution** (G classi): *solo i generatori* (`stylegan` / `stylegan3` / `sdxl`,
+  **niente `real`**) — addestrata solo sui fake.
 
-Loss = `w_det · CE(detection) + w_attr · CE(attribution)`. La condivisione della
-rappresentazione regolarizza entrambi i task. La selezione del modello usa la
-*accuracy di attribution* sul validation set (la detection ne è un caso più facile
-e derivabile).
+**Inferenza a cascata** (come in un flusso forense reale): si decide prima la
+detection; l'attribution si interpreta **solo se** l'immagine è classificata *fake*.
+Poiché l'attribution non contiene la classe `real`, la decisione finale non può mai
+essere incoerente (mai "fake ma attribuito a real").
+
+Loss = `w_det · CE(detection) + w_attr · CE(attribution, ignore_index=-1)`: i campioni
+reali (label di attribution `-1`) sono ignorati dalla loss di attribution. La
+condivisione della rappresentazione regolarizza entrambi i task. La selezione del
+modello usa la **cascade accuracy** (end-to-end) sul validation set.
+
+Metriche riportate:
+- `detection_acc` — su tutti i campioni;
+- `attribution_acc` — sui soli fake, tra i generatori;
+- `cascade_acc` — end-to-end con la detection che fa da *gate*.
 
 ## 4. Explainability
 
@@ -59,8 +70,10 @@ Un VLM open (Qwen2.5-VL-3B, 4-bit su T4) riceve:
 
 Tramite un *system prompt* da esperto forense, l'agent produce una spiegazione che
 **distingue** la motivazione della detection da quella dell'attribution, citando
-evidenze concrete. In assenza di GPU/modello, un generatore template-based
-deterministico fornisce comunque una spiegazione coerente con le evidenze.
+evidenze concrete. Coerentemente con la cascata, l'attribution viene spiegata
+**solo se** l'immagine è classificata *fake*; se è *real*, la spiegazione si limita
+alla detection (assenza di artefatti GAN/diffusion). In assenza di GPU/modello, un
+generatore template-based deterministico fornisce comunque una spiegazione coerente.
 
 ## 5. Valutazione
 

@@ -22,28 +22,32 @@ backbone ResNet18 pre-addestrate su ImageNet:
 | **Fourier** | spettro di magnitudine (log) della FFT 2D | griglie/picchi periodici tipici dell'up-sampling GAN |
 
 Gli **embedding** dei due stream (512-d ciascuno) vengono concatenati (1024-d) e
-passati ad un **classificatore multi-task** con due teste:
+passati ad un **classificatore a cascata** (tronco condiviso, due teste):
 
-- **Detection** → `real` vs `fake`
-- **Attribution** → `real` / `StyleGAN` / `StyleGAN2` / `StyleGAN3` / …
+- **Detection** → `real` vs `fake` (su tutti i campioni)
+- **Attribution** → *solo se fake* → `StyleGAN` / `StyleGAN3` / `SDXL` (solo generatori)
+
+La cascata rispecchia il flusso forense ("è fake? se sì, di chi è la firma?") e
+garantisce **coerenza**: l'attribution non contiene `real`, quindi non può mai
+contraddire la detection.
 
 L'**explainability** è a due livelli:
 
 1. **Grad-CAM** sui due backbone → *dove* guarda la rete (immagine e frequenze).
 2. **Agent VLM open** (Qwen2.5-VL, eseguito localmente sulla T4) che osserva
    RGB + Fourier + Grad-CAM insieme alle probabilità del classificatore e produce
-   la spiegazione discorsiva del *perché* real/fake e del *perché* di quella
-   attribuzione.
+   la spiegazione discorsiva del *perché* real/fake e, se fake, del *perché* di
+   quella attribuzione.
 
 ```
                 ┌─────────────┐   embedding
    immagine ───▶│ ResNet18 RGB │──────────────┐
        │        └─────────────┘               │
        │ FFT                                   ▼
-       ▼        ┌─────────────┐   embedding  ┌────────────┐  detection (real/fake)
-   spettro ────▶│ ResNet18 FFT │────────────▶│ MLP multi- │─▶ attribution (gen.)
-                └─────────────┘   concat 1024 │   task     │
-                                              └────────────┘
+       ▼        ┌─────────────┐   embedding  ┌────────────┐  ① detection (real/fake)
+   spettro ────▶│ ResNet18 FFT │────────────▶│ MLP +      │
+                └─────────────┘   concat 1024 │ 2 teste    │─▶ ② se fake: attribution
+                                              └────────────┘      (StyleGAN/3/SDXL)
                 Grad-CAM (RGB+FFT) ┐
                 probabilità        ├──▶  Agent VLM  ──▶  spiegazione NL (perché)
                 immagini           ┘

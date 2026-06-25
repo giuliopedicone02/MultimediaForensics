@@ -106,7 +106,8 @@ class ForensicsDataset(Dataset):
         return {
             "rgb": rgb,
             "fourier": fft,
-            "attribution": attr_idx,
+            # attribution: indice del generatore (-1 per i real, ignorato nella loss)
+            "attribution": self.cfg.attribution_label(attr_idx),
             "detection": self.cfg.detection_label(attr_idx),
             "path": path,
         }

@@ -88,10 +88,13 @@ def train_classifier(
 
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     ce = nn.CrossEntropyLoss()
+    # attribution: ignora i campioni reali (label -1) -> training solo sui generatori
+    ce_attr = nn.CrossEntropyLoss(ignore_index=-1)
     train_loader = _loader_from_blob(train_blob, cfg, shuffle=True)
     val_loader = _loader_from_blob(val_blob, cfg, shuffle=False)
 
-    history = {"train_loss": [], "val_loss": [], "val_det_acc": [], "val_attr_acc": []}
+    history = {"train_loss": [], "val_loss": [], "val_det_acc": [],
+               "val_attr_acc": [], "val_cascade_acc": []}
     best_acc, best_state = -1.0, None
 
     for epoch in range(cfg.epochs):
@@ -100,9 +103,15 @@ def train_classifier(
         for emb, det, attr in train_loader:
             emb, det, attr = emb.to(device), det.to(device), attr.to(device)
             out = model(emb)
+            # se il batch non contiene fake, salta la loss di attribution (evita NaN)
+            attr_loss = (
+                ce_attr(out.attribution_logits, attr)
+                if (attr != -1).any()
+                else torch.zeros((), device=device)
+            )
             loss = (
                 cfg.detection_weight * ce(out.detection_logits, det)
-                + cfg.attribution_weight * ce(out.attribution_logits, attr)
+                + cfg.attribution_weight * attr_loss
             )
             opt.zero_grad()
             loss.backward()
@@ -115,9 +124,11 @@ def train_classifier(
         history["val_loss"].append(val["loss"])
         history["val_det_acc"].append(val["detection_acc"])
         history["val_attr_acc"].append(val["attribution_acc"])
+        history["val_cascade_acc"].append(val["cascade_acc"])
 
-        if val["attribution_acc"] > best_acc:
-            best_acc = val["attribution_acc"]
+        # selezione sul cascade (end-to-end), la metrica che conta davvero
+        if val["cascade_acc"] > best_acc:
+            best_acc = val["cascade_acc"]
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
     if best_state is not None:
@@ -127,29 +138,58 @@ def train_classifier(
 
 @torch.no_grad()
 def evaluate(model, loader, cfg: Config, device) -> Dict:
+    """Metriche a cascata.
+
+    - detection_acc:   su tutti i campioni (real/fake).
+    - attribution_acc: SOLO sui fake (label != -1), tra i generatori.
+    - cascade_acc:     end-to-end con la regola di cascata (la detection fa da gate):
+        corretto se predetto real ed era real, oppure predetto fake con generatore giusto.
+    """
     model.eval()
     ce = nn.CrossEntropyLoss()
-    tot_loss = det_correct = attr_correct = n = 0
-    det_true, det_pred, attr_true, attr_pred = [], [], [], []
+    ce_attr = nn.CrossEntropyLoss(ignore_index=-1)
+    tot_loss = det_correct = attr_correct = attr_total = casc_correct = n = 0
+    det_true, det_pred, attr_true, attr_pred, casc_true, casc_pred = [], [], [], [], [], []
+
     for emb, det, attr in loader:
         emb, det, attr = emb.to(device), det.to(device), attr.to(device)
         out = model(emb)
-        loss = (
-            cfg.detection_weight * ce(out.detection_logits, det)
-            + cfg.attribution_weight * ce(out.attribution_logits, attr)
+        attr_loss = (
+            ce_attr(out.attribution_logits, attr)
+            if (attr != -1).any()
+            else torch.zeros((), device=device)
         )
+        loss = cfg.detection_weight * ce(out.detection_logits, det) \
+            + cfg.attribution_weight * attr_loss
         tot_loss += loss.item() * emb.size(0)
+
         dp = out.detection_logits.argmax(1)
         ap = out.attribution_logits.argmax(1)
         det_correct += (dp == det).sum().item()
-        attr_correct += (ap == attr).sum().item()
         n += emb.size(0)
+
+        fake = attr != -1
+        attr_total += int(fake.sum().item())
+        attr_correct += ((ap == attr) & fake).sum().item()
+
+        # cascata: etichetta finale come stringa (-1=real, altrimenti nome generatore)
+        for k in range(emb.size(0)):
+            t = "real" if int(det[k]) == 0 else cfg.generator_classes[int(attr[k])]
+            p = "real" if int(dp[k]) == 0 else cfg.generator_classes[int(ap[k])]
+            casc_true.append(t); casc_pred.append(p)
+            casc_correct += int(t == p)
+
         det_true += det.cpu().tolist(); det_pred += dp.cpu().tolist()
-        attr_true += attr.cpu().tolist(); attr_pred += ap.cpu().tolist()
+        for k in range(emb.size(0)):
+            if bool(fake[k]):
+                attr_true.append(int(attr[k])); attr_pred.append(int(ap[k]))
+
     return {
         "loss": tot_loss / max(n, 1),
         "detection_acc": det_correct / max(n, 1),
-        "attribution_acc": attr_correct / max(n, 1),
+        "attribution_acc": attr_correct / max(attr_total, 1),
+        "cascade_acc": casc_correct / max(n, 1),
         "detection_true": det_true, "detection_pred": det_pred,
         "attribution_true": attr_true, "attribution_pred": attr_pred,
+        "cascade_true": casc_true, "cascade_pred": casc_pred,
     }

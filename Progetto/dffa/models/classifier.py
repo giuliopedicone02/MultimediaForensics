@@ -2,11 +2,13 @@
 
 Un tronco condiviso (MLP) elabora il vettore concatenato [emb_rgb | emb_fourier]
 (1024-d) e alimenta due teste:
-  * detection   -> 2 logit  (real / fake)
-  * attribution -> K logit  (real / stylegan / stylegan2 / ...)
+  * detection   -> 2 logit  (real / fake)            — su tutti i campioni
+  * attribution -> G logit  (stylegan / stylegan3 / ...) — SOLO sui generatori
 
-Le due teste condividono la rappresentazione: la detection beneficia del segnale
-più fine dell'attribution e viceversa.
+**Cascade**: a inference si decide prima la detection; l'attribution si interpreta
+solo se l'immagine è classificata *fake*. L'attribution non include la classe
+'real', quindi la spiegazione non può essere incoerente (mai "fake ma → real").
+In training, la loss di attribution ignora i campioni reali (`ignore_index=-1`).
 """
 
 from __future__ import annotations
@@ -62,6 +64,26 @@ class MultiTaskClassifier(nn.Module):
         return {
             "detection_prob": det_p,
             "detection_pred": det_p.argmax(1),
-            "attribution_prob": attr_p,
+            "attribution_prob": attr_p,         # solo sui generatori
             "attribution_pred": attr_p.argmax(1),
         }
+
+
+@torch.no_grad()
+def cascade_predict(model: "MultiTaskClassifier", embeddings, generator_classes):
+    """Decisione a cascata: detection e, solo se *fake*, attribution.
+
+    Restituisce (pred_dict, decisions) dove `decisions` è una lista di dict:
+        {'detection': 'real'|'fake', 'attribution': <generatore>|None}
+    L'attribution è None quando l'immagine è classificata reale.
+    """
+    p = model.predict(embeddings)
+    decisions = []
+    for i in range(embeddings.shape[0]):
+        if int(p["detection_pred"][i]) == 0:
+            decisions.append({"detection": "real", "attribution": None})
+        else:
+            gi = int(p["attribution_pred"][i])
+            decisions.append({"detection": "fake",
+                              "attribution": generator_classes[gi]})
+    return p, decisions

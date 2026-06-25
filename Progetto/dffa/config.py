@@ -63,16 +63,33 @@ class Config:
 
     # ------------------------------------------------------------------ helpers
     @property
+    def generator_classes(self) -> List[str]:
+        """Solo i generatori (esclude 'real'): sono le classi della 2ª testa."""
+        return [c for c in self.classes if c != "real"]
+
+    @property
     def num_attribution_classes(self) -> int:
-        return len(self.classes)
+        # Cascade: l'attribution distingue SOLO tra generatori (no 'real').
+        return len(self.generator_classes)
 
     @property
     def num_detection_classes(self) -> int:
         return 2
 
-    def detection_label(self, attribution_index: int) -> int:
+    def detection_label(self, class_index: int) -> int:
         """0 se la classe è 'real', 1 altrimenti."""
-        return 0 if self.classes[attribution_index] == "real" else 1
+        return 0 if self.classes[class_index] == "real" else 1
+
+    def attribution_label(self, class_index: int) -> int:
+        """Indice del generatore (0-based tra i soli generatori).
+
+        Restituisce -1 per le immagini reali: usato come `ignore_index` nella
+        CrossEntropy così che il real non contribuisca alla loss di attribution.
+        """
+        name = self.classes[class_index]
+        if name == "real":
+            return -1
+        return self.generator_classes.index(name)
 
     def to_yaml(self, path: str | Path) -> None:
         if yaml is None:

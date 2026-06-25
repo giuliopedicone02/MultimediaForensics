@@ -43,8 +43,11 @@ _(descrivere i due stream; perché la frequenza espone gli artefatti GAN.)_
 ### 3.2 Feature extraction (ResNet18 ImageNet, congelata)
 _(embedding 512+512 = 1024-d; cache.)_
 
-### 3.3 Classificatore multi-task
-_(MLP a tronco condiviso, teste detection/attribution, loss combinata.)_
+### 3.3 Classificatore a cascata
+_(MLP a tronco condiviso; testa di detection su tutti i campioni; testa di
+attribution sui soli generatori, addestrata solo sui fake con `ignore_index=-1`.
+Inferenza a cascata: detection → se fake → attribution. Coerenza garantita.
+Selezione del modello sulla cascade accuracy.)_
 
 ### 3.4 Explainability
 _(Grad-CAM sui due stream; agent VLM open Qwen2.5-VL e suo ruolo.)_
@@ -66,14 +69,18 @@ _(Grad-CAM sui due stream; agent VLM open Qwen2.5-VL e suo ruolo.)_
 | Recall | |
 | F1 | |
 
-### 5.2 Attribution (multi-generatore)
+### 5.2 Attribution (multi-generatore, solo sui fake)
 
-- Accuracy: _…_
-- Matrice di confusione: _(figura)_
-- Classification report per classe: _(tabella)_
+- Accuracy (sui soli fake): _…_
+- Matrice di confusione tra generatori: _(figura)_
+- Classification report per generatore: _(tabella)_
 
-### 5.3 Curve di training
-_(loss/accuracy per epoca — figura.)_
+### 5.3 Cascade (end-to-end)
+
+- Cascade accuracy (detection come gate → attribution): _…_
+
+### 5.4 Curve di training
+_(loss e accuracy detection/attribution/cascade per epoca — figura.)_
 
 ## 6. Analisi qualitativa dell'explainability
 

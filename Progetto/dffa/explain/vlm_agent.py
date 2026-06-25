@@ -26,12 +26,15 @@ from PIL import Image
 def build_evidence(
     detection_prob: np.ndarray,
     attribution_prob: np.ndarray,
-    classes: List[str],
+    generator_classes: List[str],
     cam_stats: Optional[Dict[str, float]] = None,
 ) -> Dict:
-    """Riassume gli output del modello in un dizionario leggibile dall'agent."""
+    """Riassume gli output del modello (a cascata) in un dizionario per l'agent.
+
+    `attribution_prob` è la distribuzione sui SOLI generatori. L'attribution è
+    riportata solo se la detection dice *fake*; altrimenti è None (non applicabile).
+    """
     det_pred = int(np.argmax(detection_prob))
-    attr_pred = int(np.argmax(attribution_prob))
     evidence = {
         "detection": {
             "label": "fake" if det_pred == 1 else "real",
@@ -39,14 +42,18 @@ def build_evidence(
             "p_real": round(float(detection_prob[0]), 4),
             "p_fake": round(float(detection_prob[1]), 4),
         },
-        "attribution": {
-            "label": classes[attr_pred],
+        "attribution": None,  # cascade: valorizzata solo se fake
+    }
+    if det_pred == 1:
+        attr_pred = int(np.argmax(attribution_prob))
+        evidence["attribution"] = {
+            "label": generator_classes[attr_pred],
             "confidence": round(float(attribution_prob[attr_pred]), 4),
             "distribution": {
-                c: round(float(p), 4) for c, p in zip(classes, attribution_prob)
+                c: round(float(p), 4)
+                for c, p in zip(generator_classes, attribution_prob)
             },
-        },
-    }
+        }
     if cam_stats:
         evidence["gradcam"] = {k: round(float(v), 4) for k, v in cam_stats.items()}
     return evidence
@@ -140,16 +147,26 @@ class VLMExplainer:
                 content.append({"type": "image", "image": images[name]})
         det = evidence["detection"]
         attr = evidence["attribution"]
+        if attr is not None:  # cascade: fake -> c'è anche l'attribution
+            attr_line = (
+                f"- Attribution (solo se fake): {attr['label']} "
+                f"(conf. {attr['confidence']}); distribuzione={attr['distribution']}\n\n"
+                "Spiega perché l'immagine è FAKE e perché è attribuita a quel "
+                "generatore, citando le evidenze visive."
+            )
+        else:  # real: nessuna attribution
+            attr_line = (
+                "- Attribution: non applicabile (immagine classificata reale).\n\n"
+                "Spiega perché l'immagine è REAL, citando le evidenze visive "
+                "(assenza di artefatti GAN/diffusion, spettro senza griglie periodiche)."
+            )
         user_text = (
             "Immagini fornite (in ordine): RGB originale, spettro di Fourier, "
             "overlay Grad-CAM.\n\n"
             f"Predizioni del classificatore:\n"
             f"- Detection: {det['label']} (conf. {det['confidence']}, "
             f"p_real={det['p_real']}, p_fake={det['p_fake']})\n"
-            f"- Attribution: {attr['label']} (conf. {attr['confidence']}); "
-            f"distribuzione={attr['distribution']}\n\n"
-            "Spiega perché l'immagine è REAL/FAKE e perché è attribuita a quel "
-            "generatore, citando le evidenze visive."
+            + attr_line
         )
         content.append({"type": "text", "text": user_text})
         messages = [
@@ -196,10 +213,17 @@ class VLMExplainer:
                 f"{cam.get('mean', 0):.2f} (max {cam.get('max', 0):.2f}), indicando "
                 "le aree che hanno guidato la decisione."
             )
-        dist = ", ".join(f"{k}={v:.2%}" for k, v in attr["distribution"].items())
-        lines.append(
-            f"Per l'attribution, la classe più probabile è '{attr['label']}' "
-            f"(conf. {attr['confidence']:.2%}); distribuzione completa: {dist}. "
-            "La firma spettrale specifica dell'architettura giustifica questa scelta."
-        )
+        if attr is not None:  # cascade: attribution solo per i fake
+            dist = ", ".join(f"{k}={v:.2%}" for k, v in attr["distribution"].items())
+            lines.append(
+                f"Essendo fake, si procede con l'attribution: la sorgente più "
+                f"probabile è '{attr['label']}' (conf. {attr['confidence']:.2%}); "
+                f"distribuzione tra i generatori: {dist}. La firma spettrale "
+                "specifica dell'architettura giustifica questa scelta."
+            )
+        else:
+            lines.append(
+                "Essendo classificata reale, non si procede con l'attribution "
+                "del generatore (non applicabile)."
+            )
         return " ".join(lines)
