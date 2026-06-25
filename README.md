@@ -5,6 +5,7 @@
 Repository creata a scopo didattico per essere utilizzata come backup dei file creati a lezione.
 
 - **Cartella Lezioni**: Comprende gli appunti presi durante il corso (Potrebbero non essere corretti o presentare errori)
+- **Cartella Progetto**: *Deepfake Detection & Attribution* multi-stream (RGB + spettro di Fourier → ResNet18 → embedding) con classificatore a cascata ed explainability (Grad-CAM + agent VLM open).
 
 ## Authors
 
