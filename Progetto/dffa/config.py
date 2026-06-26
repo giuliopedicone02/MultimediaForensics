@@ -28,6 +28,14 @@ class Config:
     data_root: str = "data"
     classes: List[str] = field(default_factory=lambda: list(DEFAULT_CLASSES))
     image_size: int = 224
+    # Risoluzione canonica: ogni immagine, qualunque sia la dimensione nativa,
+    # viene prima portata a (canonical_size, canonical_size) con la STESSA
+    # interpolazione, *prima* sia dello stream RGB sia dello spettro di Fourier.
+    # Questo neutralizza il confound da resampling: senza, classi con risoluzioni
+    # native diverse (es. StyleGAN 1024 vs SDXL 256) sarebbero separabili in modo
+    # banale dalla "firma" del ridimensionamento e non dai veri artefatti.
+    # None = comportamento legacy (nessuna uniformazione → confound).
+    canonical_size: Optional[int] = 256
     max_per_class: Optional[int] = None  # None = usa tutte le immagini disponibili
 
     # --- split (frazioni sul totale) ---

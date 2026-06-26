@@ -5,6 +5,7 @@
 data_root: data
 classes: [real, stylegan, stylegan3, sdxl]
 image_size: 224
+canonical_size: 256        # uniforma la risoluzione a monte (anti-confound); null = legacy
 max_per_class: null        # null = tutte; es. 250 per un test rapido
 
 # --- split ---

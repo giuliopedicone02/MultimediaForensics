@@ -99,9 +99,18 @@ class ForensicsDataset(Dataset):
     def __getitem__(self, i: int) -> Dict[str, torch.Tensor | int | str]:
         path, attr_idx = self.samples[i]
         img = Image.open(path).convert("RGB")
-        rgb = self.rgb_tf(img)
+        # Uniformazione della risoluzione (anti-confound): tutte le classi passano
+        # per la stessa identica catena di resize, così la firma del resampling è
+        # condivisa e non più una scorciatoia per la classe. Lo stesso `base` (a
+        # risoluzione canonica) alimenta sia lo stream RGB sia lo spettro di Fourier.
+        if self.cfg.canonical_size:
+            cs = self.cfg.canonical_size
+            base = img.resize((cs, cs), Image.BICUBIC)
+        else:
+            base = img
+        rgb = self.rgb_tf(base)
         fft = fourier_spectrum_tensor(
-            img, size=self.cfg.image_size, log=self.cfg.fourier_log
+            base, size=self.cfg.image_size, log=self.cfg.fourier_log
         )
         return {
             "rgb": rgb,

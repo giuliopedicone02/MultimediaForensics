@@ -34,9 +34,12 @@ def extract_embeddings(
     cache_path: str | None = None,
 ) -> Dict[str, torch.Tensor]:
     """Calcola (o carica) embedding 1024-d + etichette per un set di campioni."""
+    # Firma del preprocessing: se cambia (es. risoluzione canonica), la cache
+    # vecchia è incoerente e va ricalcolata.
+    prep = (cfg.canonical_size, cfg.image_size, cfg.fourier_log)
     if cache_path and Path(cache_path).exists():
         blob = torch.load(cache_path, map_location="cpu")
-        if blob.get("n") == len(samples):
+        if blob.get("n") == len(samples) and blob.get("prep") == list(prep):
             return blob
 
     ds = ForensicsDataset(samples, cfg, augment=False)
@@ -56,11 +59,31 @@ def extract_embeddings(
         "detection": torch.cat(det).long(),
         "attribution": torch.cat(attr).long(),
         "n": len(samples),
+        "prep": list(prep),
     }
     if cache_path:
         Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(blob, cache_path)
     return blob
+
+
+def slice_stream(blob: Dict[str, torch.Tensor], which: str) -> Dict[str, torch.Tensor]:
+    """Restituisce un blob con i soli embedding di uno stream (per l'ablation).
+
+    `which`: 'rgb' (prima metà), 'fourier' (seconda metà) o 'both' (tutto).
+    L'embedding dual-stream è [emb_rgb (512) | emb_fourier (512)].
+    """
+    e = blob["embeddings"]
+    half = e.shape[1] // 2
+    if which == "rgb":
+        e = e[:, :half]
+    elif which == "fourier":
+        e = e[:, half:]
+    elif which != "both":
+        raise ValueError(f"stream sconosciuto: {which!r}")
+    out = dict(blob)
+    out["embeddings"] = e
+    return out
 
 
 def _loader_from_blob(blob: Dict[str, torch.Tensor], cfg: Config, shuffle: bool):
