@@ -86,6 +86,51 @@ def slice_stream(blob: Dict[str, torch.Tensor], which: str) -> Dict[str, torch.T
     return out
 
 
+def _filter_blob(blob: Dict[str, torch.Tensor], mask: torch.Tensor) -> Dict[str, torch.Tensor]:
+    out = {
+        "embeddings": blob["embeddings"][mask],
+        "detection": blob["detection"][mask],
+        "attribution": blob["attribution"][mask],
+        "n": int(mask.sum().item()),
+    }
+    if "prep" in blob:
+        out["prep"] = blob["prep"]
+    return out
+
+
+def cross_generator_detection(
+    blobs: Dict[str, Dict[str, torch.Tensor]], cfg: Config, device
+) -> Dict[str, Dict[str, float]]:
+    """Leave-one-generator-out: generalizzazione della *detection* a un generatore mai visto.
+
+    Per ogni generatore `g`: allena su real + (altri generatori), testa la detection
+    (real vs fake) su real + `g`. Misura quanto il rilevatore generalizza a una
+    sorgente sconosciuta, invece di memorizzare la firma di ciascun dataset.
+    Si leggono solo metriche di *detection* (l'attribution non è applicabile a una
+    classe assente dal training).
+    """
+    results: Dict[str, Dict[str, float]] = {}
+    for gi, gname in enumerate(cfg.generator_classes):
+        tr = _filter_blob(blobs["train"], blobs["train"]["attribution"] != gi)
+        va = _filter_blob(blobs["val"], blobs["val"]["attribution"] != gi)
+        model, _ = train_classifier(tr, va, cfg, device)
+
+        te_mask = (blobs["test"]["attribution"] == -1) | (blobs["test"]["attribution"] == gi)
+        te = _filter_blob(blobs["test"], te_mask)
+        r = evaluate(model, _loader_from_blob(te, cfg, shuffle=False), cfg, device)
+
+        # recall sui fake del generatore mai visto: quanti riconosciuti come fake
+        true = torch.tensor(r["detection_true"])
+        pred = torch.tensor(r["detection_pred"])
+        fake = true == 1
+        unseen_recall = float(((pred == 1) & fake).sum().item() / max(int(fake.sum().item()), 1))
+        results[gname] = {
+            "detection_acc": r["detection_acc"],
+            "unseen_fake_recall": unseen_recall,
+        }
+    return results
+
+
 def _loader_from_blob(blob: Dict[str, torch.Tensor], cfg: Config, shuffle: bool):
     ds = TensorDataset(blob["embeddings"], blob["detection"], blob["attribution"])
     # drop_last in training: evita un batch finale di dimensione 1 che farebbe

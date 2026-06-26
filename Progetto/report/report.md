@@ -178,9 +178,11 @@ quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti rea
 | RAW (`canonical_size=None`) | | | |
 | CANONICA (256) | | | |
 
-> Atteso: RAW con attribution ≈ 1.00 (irrealistico); CANONICA con valori più bassi
-> ma **credibili** = misura onesta della reale capacità forense. _(da compilare dal
-> run — sezione 7-bis del notebook.)_
+> Osservazione (dal run): l'uniformazione della risoluzione sposta **poco** le
+> metriche (es. attribution 1.00 → 0.99). La risoluzione era quindi solo **uno** dei
+> confound: ne restano altri correlati alla sorgente (compressione JPEG, color
+> grading, pipeline del dataset). L'ablation (b) e soprattutto il LOGO (§5.6) lo
+> mostrano in modo netto.
 
 **(b) Contributo degli stream** (sui dati canonici): solo RGB, solo Fourier, entrambi.
 
@@ -193,6 +195,25 @@ quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti rea
 > Permette di capire se i due stream sono davvero complementari o se uno domina.
 > _(da compilare dal run.)_
 
+### 5.6 Generalizzazione — Leave-One-Generator-Out (LOGO)
+
+Esperimento chiave per la validità forense. Per ogni generatore `g`: detection
+addestrata su `real + (altri generatori)`, testata su `real + g`. Misura se il
+rilevatore generalizza a una sorgente **mai vista** o se ha solo memorizzato la
+firma di ciascun dataset.
+
+| Held-out (mai visto) | Detection acc | Recall sui fake mai visti |
+|----------------------|--------------:|--------------------------:|
+| StyleGAN | | |
+| StyleGAN3 | | |
+| SDXL | | |
+| **media** | | |
+
+> Riferimento in-distribution: detection acc ≈ 0.97. Se i valori LOGO sono molto più
+> bassi (e il recall sui fake mai visti crolla), è la **prova diretta** che le
+> metriche alte derivano dal confound di sorgente, non da una reale capacità di
+> rilevare contenuto sintetico in generale. _(da compilare dal run — sezione 7-ter.)_
+
 ## 6. Analisi qualitativa dell'explainability
 
 Per alcuni campioni di test si riportano immagine RGB, spettro di Fourier, overlay
@@ -204,12 +225,27 @@ Grad-CAM e la spiegazione generata dall'agent (campo `source`: `vlm` o `template
 
 ## 7. Discussione
 
-- Contributo relativo dei due stream (RGB vs Fourier).
-- Qualità e fedeltà delle spiegazioni del VLM rispetto alle evidenze numeriche.
-- **Confound della risoluzione:** identificato e mitigato con la risoluzione
-  canonica (§3.1), quantificato in §5.5. Un residuo può sopravvivere (StyleGAN nasce
-  a 1024: il downscaling a 256 riduce ma non azzera ogni differenza di contenuto in
-  frequenza); idealmente servirebbero sorgenti già a risoluzione omogenea.
+- **Risultato principale (onesto).** Le metriche in-distribution sono alte
+  (detection ≈ 0.97, attribution ≈ 0.99) ma **non vanno interpretate come reale
+  capacità forense**: gli esperimenti di controllo mostrano che derivano in larga
+  parte da un **confound di sorgente**. Nel nostro dataset *generatore* e *dataset di
+  origine* sono perfettamente correlati (ogni classe = un dataset HF distinto, con la
+  sua compressione, risoluzione e color pipeline), quindi il modello può separare le
+  classi dalla "firma" della sorgente anziché dagli artefatti generativi.
+- **Contributo degli stream (§5.5b).** Il segnale è dominato dallo stream **RGB**
+  (attribution ≈ 1.00 da solo), mentre lo stream **Fourier** — quello motivato dagli
+  artefatti di frequenza — è il più debole. Questo ridimensiona l'ipotesi di partenza
+  e suggerisce che l'RGB sta catturando indizi di sorgente (colore/compressione).
+- **Generalizzazione (§5.6, LOGO).** Su un generatore mai visto la detection
+  **crolla** rispetto all'in-distribution: prova diretta che il rilevatore non
+  generalizza alla "fakeness" in senso lato, ma memorizza le sorgenti note.
+- **Confound della risoluzione (§5.5a).** Identificato e mitigato con la risoluzione
+  canonica (§3.1), ma da solo sposta poco le metriche: era una delle cause, non
+  l'unica.
+- **Fedeltà del VLM.** La spiegazione cita con sicurezza artefatti di frequenza
+  ("griglie periodiche") che però l'ablation mostra poco usati dal modello (Fourier
+  debole): la spiegazione è fluente ma non sempre **fedele** al reale processo
+  decisionale — limite noto degli explainer generativi.
 - **Altri limiti:** dimensione contenuta del dataset; un solo dominio (volti);
   robustezza a compressione/resize non valutata sistematicamente; fedeltà delle
   spiegazioni del VLM da verificare (rischio di artefatti "plausibili" ma non reali).
