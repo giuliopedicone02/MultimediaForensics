@@ -40,7 +40,9 @@ acc = ….)_
   (`bitmind/ffhq-256___stable-diffusion-xl-base-1.0`).
 - Download: subset scaricato dal *datasets-server* di HuggingFace (endpoint
   `/rows`), **300 immagini per classe disponibili in locale** (1200 totali).
-- Pre-processing: resize a 224×224, normalizzazione ImageNet.
+- Pre-processing: **risoluzione canonica** (tutte le immagini portate a 256×256
+  con la stessa interpolazione bicubica *prima* di RGB e Fourier, vedi §3.1) →
+  resize a 224×224, normalizzazione ImageNet.
 - Split **stratificato** train/val/test = 70% / 15% / 15% (seed = 42).
 
 | Classe | Sorgente HuggingFace | Risoluzione nativa | # immagini |
@@ -60,14 +62,30 @@ indicati):
 | stylegan3 | | | | |
 | sdxl      | | | | |
 
-> **Caveat metodologico.** Le risoluzioni native sono eterogenee tra le classi;
-> il pipeline normalizza tutto a 224×224 (bilinear). Il resampling può introdurre
-> una *firma* sfruttabile dal classificatore: è un possibile confound per
-> detection/attribution, da discutere tra i limiti (§7).
+> **Confound della risoluzione (centrale in questo lavoro).** Le risoluzioni
+> native sono eterogenee (real/sdxl 256, StyleGAN **1024**, StyleGAN3 244). Se ogni
+> classe viene semplicemente portata a 224, il *fattore* di resampling — diverso per
+> classe — lascia una firma che il classificatore sfrutta al posto dei veri artefatti
+> generativi, **gonfiando** le metriche fino a valori irrealistici (attribution ≈
+> 100%). Per neutralizzarlo applichiamo una **risoluzione canonica** (§3.1): tutte le
+> immagini passano per la stessa identica catena di resize. L'effetto del confound e
+> della sua rimozione è quantificato in §5.5.
 
 ## 3. Metodo
 
-### 3.1 Stream RGB e Stream Fourier
+### 3.1 Risoluzione canonica (anti-confound)
+
+Prima di qualunque elaborazione, **ogni** immagine — indipendentemente dalla
+dimensione nativa — viene portata a `canonical_size × canonical_size` (256×256) con
+la **stessa** interpolazione bicubica. Lo stesso tensore canonico alimenta sia lo
+stream RGB sia lo spettro di Fourier. Questo è essenziale soprattutto per lo stream
+Fourier: la FFT calcolata su una griglia 1024 (StyleGAN) è un oggetto diverso da
+quella su una griglia 256 (SDXL); fissando la griglia a monte si rende lo spettro
+confrontabile tra le classi e si rimuove la scorciatoia del resampling. Il
+parametro è `cfg.canonical_size` (`None` = comportamento legacy, usato come termine
+di paragone nell'ablation §5.5).
+
+### 3.2 Stream RGB e Stream Fourier
 
 Lo stream RGB lavora nel dominio spaziale (texture, artefatti semantici). Lo
 stream Fourier converte l'immagine in scala di grigi, ne calcola la FFT 2D, centra
@@ -77,7 +95,7 @@ convoluzioni trasposte / l'up-sampling dei generatori introducono **artefatti
 periodici** nello spettro, spesso invisibili nel dominio spaziale ma evidenti in
 frequenza. I due stream sono quindi complementari.
 
-### 3.2 Feature extraction (ResNet18 ImageNet, congelata)
+### 3.3 Feature extraction (ResNet18 ImageNet, congelata)
 
 Due ResNet18 indipendenti, pre-addestrate su ImageNet e **congelate**; rimossa la
 `fc`, l'output è l'embedding 512-d dopo il global average pooling. Gli embedding
@@ -86,7 +104,7 @@ embedding sono **pre-calcolati una sola volta e messi in cache** su disco: il
 training del classificatore dura pochi secondi. L'indipendenza dei backbone
 consente di agganciare Grad-CAM separatamente a `layer4` di ciascuno stream.
 
-### 3.3 Classificatore a cascata
+### 3.4 Classificatore a cascata
 
 MLP con tronco condiviso (2 layer `Linear+BN+ReLU+Dropout`) e due teste lineari:
 
@@ -101,7 +119,7 @@ l'attribution **solo se** l'immagine è classificata *fake*; poiché l'attributi
 non contiene `real`, la decisione finale non può mai essere incoerente. La
 selezione del modello usa la **cascade accuracy** (end-to-end) sul validation set.
 
-### 3.4 Explainability
+### 3.5 Explainability
 
 **Grad-CAM** sui due stream (gradienti rispetto a `layer4`, media spaziale, ReLU,
 up-sampling): RGB indica *dove* nell'immagine, Fourier *quali* regioni di
@@ -115,6 +133,8 @@ spiegazione coerente con le evidenze numeriche.
 ## 4. Setup sperimentale
 
 - **Hardware:** Google Colab GPU T4 (16 GB).
+- **Pre-processing:** risoluzione canonica `canonical_size = 256` (bicubica), poi
+  224×224 + normalizzazione ImageNet.
 - **Backbone:** ResNet18 (ImageNet), congelata; embedding 512+512 = 1024-d.
 - **Iperparametri:** epochs = 30, batch = 32, lr = 1e-3, weight decay = 1e-4,
   dropout = 0.3, hidden_dim = 256, `attribution_weight = detection_weight = 1.0`.
@@ -147,6 +167,32 @@ spiegazione coerente con le evidenze numeriche.
 _(loss e accuracy detection/attribution/cascade per epoca — figura prodotta dal
 notebook, §6.)_
 
+### 5.5 Ablation — confound della risoluzione e contributo degli stream
+
+**(a) RAW vs CANONICA.** Stessa pipeline con e senza uniformazione della
+risoluzione. Il crollo dell'accuracy (in particolare dell'attribution) misura
+quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti reali.
+
+| Pipeline | Detection acc | Attribution acc (fake) | Cascade acc |
+|----------|--------------:|-----------------------:|------------:|
+| RAW (`canonical_size=None`) | | | |
+| CANONICA (256) | | | |
+
+> Atteso: RAW con attribution ≈ 1.00 (irrealistico); CANONICA con valori più bassi
+> ma **credibili** = misura onesta della reale capacità forense. _(da compilare dal
+> run — sezione 7-bis del notebook.)_
+
+**(b) Contributo degli stream** (sui dati canonici): solo RGB, solo Fourier, entrambi.
+
+| Stream | Detection acc | Attribution acc (fake) | Cascade acc |
+|--------|--------------:|-----------------------:|------------:|
+| RGB-only | | | |
+| Fourier-only | | | |
+| Both | | | |
+
+> Permette di capire se i due stream sono davvero complementari o se uno domina.
+> _(da compilare dal run.)_
+
 ## 6. Analisi qualitativa dell'explainability
 
 Per alcuni campioni di test si riportano immagine RGB, spettro di Fourier, overlay
@@ -160,9 +206,13 @@ Grad-CAM e la spiegazione generata dall'agent (campo `source`: `vlm` o `template
 
 - Contributo relativo dei due stream (RGB vs Fourier).
 - Qualità e fedeltà delle spiegazioni del VLM rispetto alle evidenze numeriche.
-- **Limiti:** dimensione contenuta del dataset; un solo dominio (volti);
-  risoluzioni native eterogenee normalizzate a 224 (possibile confound da
-  resampling, §2); robustezza a compressione/resize non valutata.
+- **Confound della risoluzione:** identificato e mitigato con la risoluzione
+  canonica (§3.1), quantificato in §5.5. Un residuo può sopravvivere (StyleGAN nasce
+  a 1024: il downscaling a 256 riduce ma non azzera ogni differenza di contenuto in
+  frequenza); idealmente servirebbero sorgenti già a risoluzione omogenea.
+- **Altri limiti:** dimensione contenuta del dataset; un solo dominio (volti);
+  robustezza a compressione/resize non valutata sistematicamente; fedeltà delle
+  spiegazioni del VLM da verificare (rischio di artefatti "plausibili" ma non reali).
 
 ## 8. Conclusioni e sviluppi futuri
 

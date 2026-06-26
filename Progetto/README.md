@@ -20,6 +20,7 @@ Pipeline forense multi-stream (RGB + spettro di Fourier → ResNet18) che **rile
 - **Feature extraction a doppio backbone ResNet18** pre-addestrato su ImageNet e **congelato**: due embedding da 512-d concatenati (1024-d). Gli embedding sono **pre-calcolati e messi in cache** su disco → training del classificatore in pochi secondi.
 - **Classificatore multi-task** a tronco condiviso con due teste; attribution addestrata sui *soli* fake via `ignore_index=-1`; selezione del modello sulla **cascade accuracy** end-to-end.
 - **Explainability a due livelli**: Grad-CAM su entrambi gli stream (*dove* guarda la rete, nello spazio e in frequenza) + **agent VLM open** (Qwen2.5-VL, 4-bit) che produce la motivazione in linguaggio naturale; **fallback template-based deterministico** se manca la GPU.
+- **Controllo del confound da risoluzione**: tutte le immagini passano per una **risoluzione canonica** comune (stessa interpolazione) prima di RGB e Fourier, così il modello non può barare sulla "firma" del resampling; un'**ablation** dedicata (RAW vs canonica, e contributo dei singoli stream) quantifica il fenomeno.
 - **Riproducibilità**: seed globale, cuDNN deterministico, split stratificato, configurazione interamente serializzata in YAML.
 - **Download dataset lightweight** dal *datasets-server* di HuggingFace (endpoint `/rows`): niente parquet/tar interi.
 
@@ -112,6 +113,7 @@ La configurazione è centralizzata in [`configs/default.yaml`](configs/default.y
 ```yaml
 classes: [real, stylegan, stylegan3, sdxl]
 image_size: 224
+canonical_size: 256      # uniforma la risoluzione a monte (anti-confound); null = legacy
 max_per_class: null      # null = tutte; es. 250 per un run rapido
 epochs: 30
 batch_size: 32

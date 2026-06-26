@@ -5,8 +5,19 @@ Documento di dettaglio della pipeline DFFA. Per la visione d'insieme vedi il
 
 ## 1. Pre-processing e stream
 
-Ogni immagine è ridimensionata a `224×224` e normalizzata con le statistiche di
-ImageNet (coerenza col backbone pre-addestrato).
+**Risoluzione canonica (anti-confound).** Le classi hanno risoluzioni native
+eterogenee (real/sdxl 256, StyleGAN 1024, StyleGAN3 244). Se si ridimensiona
+direttamente a 224, il *fattore* di resampling — diverso per classe — diventa una
+firma che il classificatore sfrutta al posto dei veri artefatti generativi,
+gonfiando le metriche (attribution ≈ 100%). Per evitarlo, ogni immagine viene prima
+portata a `canonical_size × canonical_size` (default 256) con la **stessa**
+interpolazione bicubica; lo stesso tensore canonico alimenta entrambi gli stream.
+Con `cfg.canonical_size = None` si ripristina il comportamento legacy, usato come
+termine di paragone nell'ablation (vedi `engine.slice_stream` e la sezione 7-bis del
+notebook).
+
+Dopo l'uniformazione, ogni immagine è ridimensionata a `224×224` e normalizzata con
+le statistiche di ImageNet (coerenza col backbone pre-addestrato).
 
 - **Stream RGB**: immagine normalizzata → ResNet18.
 - **Stream Fourier**: si converte l'immagine in scala di grigi, si calcola la
