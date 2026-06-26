@@ -173,7 +173,7 @@ Per classe (test = 38 real, 114 fake): `real` precision 0.90 / recall 0.97;
 
 ### 5.4 Curve di training
 
-![Curve di training](../results/figures/training_curves.png)
+![Curve di training](figures/training_curves.png)
 
 La loss di training scende rapidamente verso ~0 mentre la loss di validazione si
 assesta e poi risale leggermente dopo l'epoca ~10: segno di un **lieve overfitting**
@@ -244,9 +244,9 @@ Grad-CAM (figura) e la spiegazione generata dall'agent VLM (`source = vlm`).
 
 ### Esempio FAKE correttamente rilevato (attribuito a StyleGAN)
 
-![Esempio: RGB, spettro di Fourier, Grad-CAM](../results/figures/example_panel.png)
+![Esempio: RGB, spettro di Fourier, Grad-CAM](figures/example_panel.png)
 
-![Grad-CAM RGB e Fourier](../results/figures/gradcam.png)
+![Grad-CAM RGB e Fourier](figures/gradcam.png)
 
 Il volto è **fotorealistico**: a occhio non si distinguono artefatti di sintesi. Il
 Grad-CAM si concentra su viso e orecchie; lo spettro di Fourier mostra il tipico
