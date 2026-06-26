@@ -173,8 +173,13 @@ Per classe (test = 38 real, 114 fake): `real` precision 0.90 / recall 0.97;
 
 ### 5.4 Curve di training
 
-_(loss e accuracy detection/attribution/cascade per epoca — figura prodotta dal
-notebook, §6.)_
+![Curve di training](../results/figures/training_curves.png)
+
+La loss di training scende rapidamente verso ~0 mentre la loss di validazione si
+assesta e poi risale leggermente dopo l'epoca ~10: segno di un **lieve overfitting**
+del classificatore MLP (atteso, dato il validation set ridotto, 152 campioni, e gli
+embedding congelati). La selezione del modello sulla *cascade accuracy* di
+validazione mitiga l'effetto. Le accuracy di validazione sono alte ma rumorose.
 
 ### 5.5 Ablation — confound della risoluzione e contributo degli stream
 
@@ -234,12 +239,41 @@ sconosciuto.
 
 ## 6. Analisi qualitativa dell'explainability
 
-Per alcuni campioni di test si riportano immagine RGB, spettro di Fourier, overlay
-Grad-CAM e la spiegazione generata dall'agent (campo `source`: `vlm` o `template`).
+Per un campione di test si riportano immagine RGB, spettro di Fourier, overlay
+Grad-CAM (figura) e la spiegazione generata dall'agent VLM (`source = vlm`).
 
-- **Esempio FAKE corretto:** _(immagini + testo della spiegazione.)_
-- **Esempio REAL corretto:** _(…)_
-- **Caso di errore:** _(…)_ — commento su cosa ha "ingannato" il modello.
+### Esempio FAKE correttamente rilevato (attribuito a StyleGAN)
+
+![Esempio: RGB, spettro di Fourier, Grad-CAM](../results/figures/example_panel.png)
+
+![Grad-CAM RGB e Fourier](../results/figures/gradcam.png)
+
+Il volto è **fotorealistico**: a occhio non si distinguono artefatti di sintesi. Il
+Grad-CAM si concentra su viso e orecchie; lo spettro di Fourier mostra il tipico
+picco centrale, senza griglie periodiche evidenti. Questo è coerente con il risultato
+chiave del lavoro: la decisione **non** poggia su artefatti percepibili, ma su indizi
+di sorgente non visibili. Notevolmente, l'agent VLM — col prompt cauto — **non
+inventa** artefatti e arriva alla stessa conclusione:
+
+> «L'immagine originale mostra una persona con capelli lunghi e una maglietta gialla.
+> L'overlay Grad-CAM evidenzia le zone più importanti per il classificatore,
+> concentrandosi sul viso e sulle orecchie. […] Le evidenze visive realmente
+> osservabili includono i dettagli del viso […]. **Non sono presenti griglie
+> periodiche o altre strutture che potrebbero essere attribuite a un generatore.
+> Tuttavia, non è possibile escludere che il modello possa basarsi su indizi non
+> visibili, come statistiche di colore o compressione**, che potrebbero influenzare la
+> decisione del classificatore.» *(fonte: Qwen2.5-VL)*
+
+La fedeltà della spiegazione è qui **adeguata**: l'agent riconosce l'assenza di
+artefatti visibili e cita esplicitamente gli indizi di sorgente, in linea con
+l'ablation (§5.5b) e il LOGO (§5.6). Si confronti con una versione precedente del
+prompt, che invece affermava con sicurezza "griglie periodiche e picchi di frequenza
+tipici delle GAN" — un esempio concreto di spiegazione *non fedele* indotta da un
+prompt che dà per scontati gli artefatti.
+
+> **Esempio REAL corretto** e **caso di errore**: _(opzionali — selezionare un
+> campione real e uno mal classificato e ripetere la procedura della sezione 8-9 del
+> notebook.)_
 
 ## 7. Discussione
 
