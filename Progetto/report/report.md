@@ -77,6 +77,47 @@ split 696 / 152 / 152):
 
 ## 3. Metodo
 
+### 3.0 Panoramica del flusso
+
+Il sistema risponde in cascata a tre domande: *vera o finta?* → (se finta) *quale
+generatore?* → *perché?*. Ogni immagine è osservata su due stream complementari
+(RGB e spettro di Fourier), codificati da ResNet18 congelate; la detection fa da
+*gate* e l'attribution si interpreta solo sui fake; infine un VLM open motiva in
+linguaggio naturale entrambe le decisioni.
+
+```mermaid
+flowchart TD
+    A[Foto di un volto] --> B{Pre-processing<br/>risoluzione canonica}
+
+    B --> C1[Stream RGB<br/>colori e texture]
+    B --> C2[Stream Fourier<br/>artefatti di frequenza]
+
+    C1 --> D[ResNet18 congelata<br/>embedding 1024-d]
+    C2 --> D
+
+    D --> E{1 - DETECTION<br/>real o fake?}
+
+    E -->|REAL| F[STOP<br/>nessuna attribution]
+    E -->|FAKE| G{2 - ATTRIBUTION<br/>quale generatore?}
+
+    G --> H[StyleGAN / StyleGAN3 / SDXL]
+
+    F --> I[3 - VLM Qwen2.5-VL<br/>spiegazione in linguaggio naturale]
+    H --> I
+
+    I --> J[Output finale:<br/>perche real/fake<br/>perche quel generatore]
+
+    style E fill:#ffe0b2
+    style G fill:#ffccbc
+    style I fill:#c8e6c9
+    style J fill:#bbdefb
+```
+
+Il flusso si **biforca** dopo la detection: se *real* salta l'attribution e passa
+direttamente alla spiegazione; se *fake* attraversa prima l'attribution. I due rami
+si ricongiungono nel VLM, che spiega le scelte fatte. I dettagli di ciascun blocco
+sono nelle sottosezioni seguenti.
+
 ### 3.1 Risoluzione canonica (anti-confound)
 
 Prima di qualunque elaborazione, **ogni** immagine — indipendentemente dalla
