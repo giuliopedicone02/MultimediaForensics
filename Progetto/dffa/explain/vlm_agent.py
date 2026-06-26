@@ -60,15 +60,22 @@ def build_evidence(
 
 
 _SYSTEM_PROMPT = (
-    "Sei un esperto di multimedia forensics. Ti vengono mostrate l'immagine "
-    "originale, il suo spettro di Fourier e una mappa Grad-CAM che indica le "
-    "regioni su cui il classificatore si è basato. Ricevi inoltre le predizioni "
-    "numeriche di un classificatore (detection real/fake e attribution del "
-    "generatore). Il tuo compito è spiegare in modo chiaro e tecnico PERCHÉ "
-    "l'immagine è classificata così, citando evidenze visive concrete: artefatti "
-    "GAN, incoerenze di texture/illuminazione, picchi/griglie periodiche nello "
-    "spettro di Fourier, e le regioni evidenziate dal Grad-CAM. Distingui la "
-    "motivazione della DETECTION da quella dell'ATTRIBUTION. Sii conciso (5-8 frasi)."
+    "Sei un assistente di multimedia forensics. Ti vengono mostrate l'immagine "
+    "originale, il suo spettro di Fourier e una mappa Grad-CAM delle regioni più "
+    "rilevanti per un classificatore, insieme alle predizioni numeriche del "
+    "classificatore (detection real/fake e, se fake, attribution del generatore). "
+    "Segui queste regole:\n"
+    "1. Scrivi in italiano corretto e scorrevole, in modo chiaro e CAUTO (5-7 frasi).\n"
+    "2. Descrivi solo ciò che è effettivamente osservabile. NON dare per scontata "
+    "la presenza di artefatti (es. griglie periodiche nello spettro, incoerenze di "
+    "texture) se non li riconosci davvero: in caso, dichiara l'incertezza.\n"
+    "3. Ricorda che il classificatore può basarsi su indizi non visibili a occhio "
+    "(statistiche di colore, compressione, risoluzione legate alla sorgente dei "
+    "dati): segnala questa possibilità invece di inventare artefatti.\n"
+    "4. Tratta le probabilità come output del modello, non come prova certa; "
+    "distingui ciò che il classificatore RIPORTA da ciò che è VISIVAMENTE "
+    "verificabile.\n"
+    "5. Distingui la motivazione della DETECTION da quella dell'ATTRIBUTION."
 )
 
 
@@ -151,14 +158,17 @@ class VLMExplainer:
             attr_line = (
                 f"- Attribution (solo se fake): {attr['label']} "
                 f"(conf. {attr['confidence']}); distribuzione={attr['distribution']}\n\n"
-                "Spiega perché l'immagine è FAKE e perché è attribuita a quel "
-                "generatore, citando le evidenze visive."
+                "Commenta la classificazione come FAKE e l'attribuzione al generatore "
+                "indicato. Indica quali evidenze visive sono realmente osservabili e "
+                "quali no; se non vedi artefatti chiari, dillo e ipotizza che il modello "
+                "possa appoggiarsi a indizi di sorgente non visibili a occhio."
             )
         else:  # real: nessuna attribution
             attr_line = (
                 "- Attribution: non applicabile (immagine classificata reale).\n\n"
-                "Spiega perché l'immagine è REAL, citando le evidenze visive "
-                "(assenza di artefatti GAN/diffusion, spettro senza griglie periodiche)."
+                "Commenta la classificazione come REAL: indica se osservi assenza di "
+                "artefatti evidenti, restando cauto sul fatto che l'assenza visiva non "
+                "è una prova definitiva."
             )
         user_text = (
             "Immagini fornite (in ordine): RGB originale, spettro di Fourier, "
@@ -181,7 +191,10 @@ class VLMExplainer:
         inputs = self.processor(
             text=[text], images=pil_images, return_tensors="pt"
         ).to(self.model.device)
-        out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens)
+        # decoding deterministico (greedy): spiegazioni riproducibili
+        out = self.model.generate(
+            **inputs, max_new_tokens=self.max_new_tokens, do_sample=False
+        )
         trimmed = out[:, inputs["input_ids"].shape[1] :]
         return self.processor.batch_decode(trimmed, skip_special_tokens=True)[0].strip()
 
@@ -194,18 +207,19 @@ class VLMExplainer:
         lines = []
         if det["label"] == "fake":
             lines.append(
-                f"L'immagine è classificata FAKE con confidenza {det['confidence']:.2%}"
-                f" (p_fake={det['p_fake']:.2%}). Il segnale dominante proviene "
-                "tipicamente da artefatti nel dominio della frequenza: lo spettro "
-                "di Fourier mostra picchi/griglie periodiche dovuti all'up-sampling "
-                "del generatore, assenti nelle immagini reali."
+                f"Il classificatore segnala l'immagine come FAKE con confidenza "
+                f"{det['confidence']:.2%} (p_fake={det['p_fake']:.2%}). Le cause "
+                "possono includere artefatti tipici dei generatori (griglie periodiche "
+                "nello spettro, incoerenze di texture), ma anche indizi di sorgente non "
+                "visibili a occhio (statistiche di colore/compressione/risoluzione): "
+                "la sola confidenza non è una prova certa."
             )
         else:
             lines.append(
-                f"L'immagine è classificata REAL con confidenza {det['confidence']:.2%}"
-                f" (p_real={det['p_real']:.2%}). Lo spettro di Fourier non presenta "
-                "le griglie periodiche tipiche delle GAN e le texture risultano "
-                "coerenti con un sensore fotografico reale."
+                f"Il classificatore segnala l'immagine come REAL con confidenza "
+                f"{det['confidence']:.2%} (p_real={det['p_real']:.2%}). Non emergono "
+                "evidenze forti di sintesi, ma l'assenza di artefatti visibili non "
+                "garantisce l'autenticità."
             )
         if cam:
             lines.append(
@@ -216,10 +230,12 @@ class VLMExplainer:
         if attr is not None:  # cascade: attribution solo per i fake
             dist = ", ".join(f"{k}={v:.2%}" for k, v in attr["distribution"].items())
             lines.append(
-                f"Essendo fake, si procede con l'attribution: la sorgente più "
-                f"probabile è '{attr['label']}' (conf. {attr['confidence']:.2%}); "
-                f"distribuzione tra i generatori: {dist}. La firma spettrale "
-                "specifica dell'architettura giustifica questa scelta."
+                f"Essendo classificata fake, si procede con l'attribution: il "
+                f"generatore più probabile è '{attr['label']}' (conf. "
+                f"{attr['confidence']:.2%}); distribuzione: {dist}. Da notare che, in "
+                "questo dataset, ogni generatore coincide con una sorgente distinta, "
+                "quindi l'attribuzione può riflettere la firma della sorgente più che "
+                "quella dell'architettura generativa."
             )
         else:
             lines.append(
