@@ -17,9 +17,13 @@ multi-task con inferenza **a cascata** (detection real/fake → se *fake* →
 attribution tra i generatori). Il sistema integra l'**explainability**: Grad-CAM
 sui due stream e un **agent VLM open** (Qwen2.5-VL) che motiva in linguaggio
 naturale il *perché* di detection e attribution. L'intero esperimento è
-eseguibile gratuitamente su Google Colab (GPU T4). _(Risultati principali: da
-compilare dopo il run — detection acc = …, attribution acc (fake) = …, cascade
-acc = ….)_
+eseguibile gratuitamente su Google Colab (GPU T4). I risultati *in-distribution*
+sono elevati (detection acc = 0.967, attribution acc sui fake = 0.991, cascade acc =
+0.961) ma gli esperimenti di controllo mostrano che dipendono in larga parte da un
+**confound di sorgente**: in un test *leave-one-generator-out* la detection su un
+generatore mai visto crolla a 0.557 di media (recall sui fake nuovi fino a 0.00 per
+SDXL). Il contributo principale di questo lavoro è quindi **metodologico**:
+identificare, misurare e discutere onestamente tale confound.
 
 ## 1. Introduzione
 
@@ -52,15 +56,15 @@ acc = ….)_
 | `stylegan3` | `34data/stylegan3_T_FFHQU_processed`              | 244×244   | 300 |
 | `sdxl`      | `bitmind/ffhq-256___stable-diffusion-xl-base-1.0` | 256×256   | 300 |
 
-Conteggi per split (da confermare dall'output del run; con `max_per_class` e seed
-indicati):
+Conteggi per split (run con `max_per_class = 250`, seed = 42 → 1000 immagini,
+split 696 / 152 / 152):
 
 | Classe | # immagini | Train | Val | Test |
 |--------|-----------:|------:|----:|-----:|
-| real      | | | | |
-| stylegan  | | | | |
-| stylegan3 | | | | |
-| sdxl      | | | | |
+| real      | 250 | 174 | 38 | 38 |
+| stylegan  | 250 | 174 | 38 | 38 |
+| stylegan3 | 250 | 174 | 38 | 38 |
+| sdxl      | 250 | 174 | 38 | 38 |
 
 > **Confound della risoluzione (centrale in questo lavoro).** Le risoluzioni
 > native sono eterogenee (real/sdxl 256, StyleGAN **1024**, StyleGAN3 244). Se ogni
@@ -147,20 +151,25 @@ spiegazione coerente con le evidenze numeriche.
 
 | Metrica | Valore |
 |---------|-------:|
-| Accuracy | |
-| Precision | |
-| Recall | |
-| F1 | |
+| Accuracy | 0.967 |
+| Precision (macro) | 0.95 |
+| Recall (macro) | 0.97 |
+| F1 (macro) | 0.96 |
+
+Per classe (test = 38 real, 114 fake): `real` precision 0.90 / recall 0.97;
+`fake` precision 0.99 / recall 0.96.
 
 ### 5.2 Attribution (multi-generatore, solo sui fake)
 
-- Accuracy (sui soli fake): _…_
-- Matrice di confusione tra generatori: _(figura)_
-- Classification report per generatore: _(tabella)_
+- Accuracy (sui soli fake): **0.991** (113/114).
+- Per generatore (F1): `stylegan` 0.99, `stylegan3` 1.00, `sdxl` 0.99.
+- Matrice di confusione tra generatori: _(figura dal notebook, §7)_ — quasi diagonale.
+- ⚠️ Questo valore è **gonfiato dal confound di sorgente** (vedi §5.5b: il solo
+  stream RGB attribuisce al 100%) e va letto alla luce del LOGO (§5.6).
 
 ### 5.3 Cascade (end-to-end)
 
-- Cascade accuracy (detection come gate → attribution): _…_
+- Cascade accuracy (detection come gate → attribution): **0.961**.
 
 ### 5.4 Curve di training
 
@@ -175,8 +184,8 @@ quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti rea
 
 | Pipeline | Detection acc | Attribution acc (fake) | Cascade acc |
 |----------|--------------:|-----------------------:|------------:|
-| RAW (`canonical_size=None`) | | | |
-| CANONICA (256) | | | |
+| RAW (`canonical_size=None`) | 0.980 | 1.000 | 0.980 |
+| CANONICA (256) | 0.967 | 0.991 | 0.961 |
 
 > Osservazione (dal run): l'uniformazione della risoluzione sposta **poco** le
 > metriche (es. attribution 1.00 → 0.99). La risoluzione era quindi solo **uno** dei
@@ -188,9 +197,14 @@ quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti rea
 
 | Stream | Detection acc | Attribution acc (fake) | Cascade acc |
 |--------|--------------:|-----------------------:|------------:|
-| RGB-only | | | |
-| Fourier-only | | | |
-| Both | | | |
+| RGB-only | 0.961 | 1.000 | 0.961 |
+| Fourier-only | 0.763 | 0.842 | 0.671 |
+| Both | 0.961 | 0.991 | 0.954 |
+
+Il segnale è **dominato dall'RGB** (attribution perfetta da solo); lo stream Fourier
+— quello motivato dagli artefatti di frequenza — è nettamente il più debole. Questo
+ridimensiona l'ipotesi di partenza e indica che l'RGB cattura indizi di sorgente
+(colore/compressione) più che veri artefatti generativi.
 
 > Permette di capire se i due stream sono davvero complementari o se uno domina.
 > _(da compilare dal run.)_
@@ -204,15 +218,19 @@ firma di ciascun dataset.
 
 | Held-out (mai visto) | Detection acc | Recall sui fake mai visti |
 |----------------------|--------------:|--------------------------:|
-| StyleGAN | | |
-| StyleGAN3 | | |
-| SDXL | | |
-| **media** | | |
+| StyleGAN | 0.566 | 0.132 |
+| StyleGAN3 | 0.618 | 0.289 |
+| SDXL | 0.487 | 0.000 |
+| **media** | **0.557** | — |
 
-> Riferimento in-distribution: detection acc ≈ 0.97. Se i valori LOGO sono molto più
-> bassi (e il recall sui fake mai visti crolla), è la **prova diretta** che le
-> metriche alte derivano dal confound di sorgente, non da una reale capacità di
-> rilevare contenuto sintetico in generale. _(da compilare dal run — sezione 7-ter.)_
+Riferimento in-distribution: detection acc = 0.967. La detection **crolla a 0.557**
+(vicino al caso, dato che il test è ~50% real / 50% fake) e il **recall sui fake mai
+visti precipita**: 0.13, 0.29 e **0.00** per SDXL. Il caso SDXL è il più indicativo:
+è un modello *diffusion*, mentre l'addestramento (sui soli StyleGAN/StyleGAN3) ha
+visto solo *GAN* → il rilevatore classifica **tutti** gli SDXL come reali. È la prova
+diretta che le metriche in-distribution riflettono la memorizzazione della firma
+delle sorgenti note, non una reale capacità di rilevare contenuto sintetico
+sconosciuto.
 
 ## 6. Analisi qualitativa dell'explainability
 
@@ -252,9 +270,24 @@ Grad-CAM e la spiegazione generata dall'agent (campo `source`: `vlm` o `template
 
 ## 8. Conclusioni e sviluppi futuri
 
-_(sintesi dei risultati; estensioni: ulteriori generatori, LoRA fine-tuning dei
-backbone, calibrazione della confidenza (temperature scaling), test di robustezza
-JPEG/resize/blur.)_
+Abbiamo realizzato una pipeline completa di detection + attribution a cascata con
+explainability (Grad-CAM + agent VLM), eseguibile gratuitamente su Colab T4. I
+risultati in-distribution sono elevati (detection 0.967, attribution 0.991), ma
+l'analisi critica — risoluzione canonica, ablation degli stream e soprattutto il test
+*leave-one-generator-out* — dimostra che tali valori sono in gran parte un artefatto
+del **confound di sorgente**: nel dataset i generatori coincidono con dataset di
+origine distinti, e il modello ne memorizza la firma invece di apprendere la
+"sinteticità" in generale. Su un generatore mai visto la detection scende a 0.557
+(recall 0.00 su SDXL). Il valore del lavoro è quindi metodologico: mostrare come si
+smaschera un risultato troppo bello per essere vero.
+
+**Sviluppi futuri.** (i) Un benchmark *controllato* in cui i fake siano generati
+dalla **stessa** pipeline a partire dagli stessi reali (per scorporare generatore e
+sorgente); (ii) normalizzazione aggressiva (ricompressione JPEG uniforme, color
+matching) e augmentation che rompano le firme di sorgente; (iii) valutazione di
+robustezza (JPEG/resize/blur); (iv) fine-tuning leggero (LoRA) dei backbone e
+calibrazione della confidenza; (v) protocollo di valutazione *cross-source* come
+metrica primaria al posto dell'accuracy in-distribution.
 
 ## Riferimenti
 
