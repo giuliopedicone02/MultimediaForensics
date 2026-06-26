@@ -1,57 +1,232 @@
 # DFFA — Deepfake Forensics & Attribution
 
-Sistema multi-stream per **deepfake detection** e **deepfake attribution** con
-**explainability**, sviluppato per il corso di *Multimedia Forensics* (Laurea
-Magistrale). Il sistema non si limita a dire *se* un volto è reale o sintetico e
-*da quale generatore* proviene: spiega anche **il perché** della decisione,
-combinando evidenza visiva (Grad-CAM, spettro di Fourier) con un agent VLM open
-che genera la motivazione in linguaggio naturale.
+Pipeline forense multi-stream (RGB + spettro di Fourier → ResNet18) che **rileva** volti sintetici, ne **attribuisce il generatore** in cascata e **spiega** ogni decisione con Grad-CAM e un agent VLM open. Pensata per girare gratis su Google Colab (GPU T4).
 
-> Progettato per girare gratuitamente su **Google Colab (GPU T4)**.
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-%E2%89%A52.1-ee4c2c.svg)
+![Backbone](https://img.shields.io/badge/Backbone-ResNet18-orange.svg)
+![VLM](https://img.shields.io/badge/VLM-Qwen2.5--VL-purple.svg)
+![Platform](https://img.shields.io/badge/Colab-T4-f9ab00.svg)
+
+> Progetto per il corso *Multimedia Forensics* — Laurea Magistrale (A.A. 2025-26), UniCT.
 
 ---
 
-## Idea in breve
+## Caratteristiche principali
 
-Ogni immagine viene analizzata su **due stream complementari** e date in pasto a
-backbone ResNet18 pre-addestrate su ImageNet:
+- **Detection real/fake** su singolo volto a partire da due stream complementari (immagine RGB + spettro di magnitudine della FFT 2D).
+- **Attribution del generatore in cascata**: se l'immagine è *fake*, una seconda testa la attribuisce a `StyleGAN` / `StyleGAN3` / `SDXL`. L'attribution non contiene la classe `real`, quindi **non può mai contraddire** la detection.
+- **Feature extraction a doppio backbone ResNet18** pre-addestrato su ImageNet e **congelato**: due embedding da 512-d concatenati (1024-d). Gli embedding sono **pre-calcolati e messi in cache** su disco → training del classificatore in pochi secondi.
+- **Classificatore multi-task** a tronco condiviso con due teste; attribution addestrata sui *soli* fake via `ignore_index=-1`; selezione del modello sulla **cascade accuracy** end-to-end.
+- **Explainability a due livelli**: Grad-CAM su entrambi gli stream (*dove* guarda la rete, nello spazio e in frequenza) + **agent VLM open** (Qwen2.5-VL, 4-bit) che produce la motivazione in linguaggio naturale; **fallback template-based deterministico** se manca la GPU.
+- **Riproducibilità**: seed globale, cuDNN deterministico, split stratificato, configurazione interamente serializzata in YAML.
+- **Download dataset lightweight** dal *datasets-server* di HuggingFace (endpoint `/rows`): niente parquet/tar interi.
 
-| Stream | Input | Cosa cattura |
-|--------|-------|--------------|
-| **RGB** | immagine originale | artefatti semantici/texture nel dominio spaziale |
-| **Fourier** | spettro di magnitudine (log) della FFT 2D | griglie/picchi periodici tipici dell'up-sampling GAN |
+---
 
-Gli **embedding** dei due stream (512-d ciascuno) vengono concatenati (1024-d) e
-passati ad un **classificatore a cascata** (tronco condiviso, due teste):
+## Architettura
 
-- **Detection** → `real` vs `fake` (su tutti i campioni)
-- **Attribution** → *solo se fake* → `StyleGAN` / `StyleGAN3` / `SDXL` (solo generatori)
+```mermaid
+flowchart LR
+    IMG[Immagine volto 224x224] --> RGB[Stream RGB]
+    IMG --> FFT[FFT 2D - log magnitude]
+    RGB --> RN1[ResNet18 ImageNet - congelata]
+    FFT --> RN2[ResNet18 ImageNet - congelata]
+    RN1 --> E1[embedding 512-d]
+    RN2 --> E2[embedding 512-d]
+    E1 --> CAT[concat 1024-d]
+    E2 --> CAT
+    CAT --> MLP[MLP tronco condiviso]
+    MLP --> DET[Testa Detection: real / fake]
+    MLP --> ATT[Testa Attribution: StyleGAN / StyleGAN3 / SDXL]
+```
 
-La cascata rispecchia il flusso forense ("è fake? se sì, di chi è la firma?") e
-garantisce **coerenza**: l'attribution non contiene `real`, quindi non può mai
-contraddire la detection.
+### Inferenza a cascata
 
-L'**explainability** è a due livelli:
+```mermaid
+flowchart TD
+    START[Embedding 1024-d] --> D{Detection}
+    D -->|real| R[Output: REAL - stop, niente attribution]
+    D -->|fake| A[Testa Attribution sui soli generatori]
+    A --> O[Output: FAKE attribuito a StyleGAN / StyleGAN3 / SDXL]
+    R --> X[Grad-CAM + Agent VLM: PERCHE]
+    O --> X
+```
 
-1. **Grad-CAM** sui due backbone → *dove* guarda la rete (immagine e frequenze).
-2. **Agent VLM open** (Qwen2.5-VL, eseguito localmente sulla T4) che osserva
-   RGB + Fourier + Grad-CAM insieme alle probabilità del classificatore e produce
-   la spiegazione discorsiva del *perché* real/fake e, se fake, del *perché* di
-   quella attribuzione.
+L'agent VLM riceve immagine RGB, spettro di Fourier e overlay Grad-CAM **insieme** alle probabilità del classificatore, e produce una spiegazione che distingue la motivazione della *detection* da quella dell'*attribution*. Dettaglio completo in [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## Tech Stack & Prerequisiti
+
+| Componente | Tecnologia | Versione minima |
+|------------|-----------|----------------:|
+| Linguaggio | Python | 3.10 |
+| Deep learning | PyTorch + torchvision | 2.1 / 0.16 |
+| Numerico / immagini | NumPy, Pillow, scikit-learn, matplotlib | 1.24 / 10.0 / 1.3 / 3.7 |
+| Config / utilità | PyYAML, tqdm | 6.0 / 4.66 |
+| Agent VLM *(extra `vlm`)* | transformers, accelerate, bitsandbytes, qwen-vl-utils, sentencepiece | 4.49 / 0.34 / 0.43 / 0.0.8 / 0.1.99 |
+| Hardware (consigliato) | GPU CUDA (es. Colab **T4**, 16 GB) | — |
+
+> [!NOTE]
+> Il progetto non richiede alcun file `.env` né chiavi API: l'agent è un VLM **open** eseguito localmente. La quantizzazione 4-bit (`bitsandbytes`) richiede CUDA; **in assenza di GPU** detection, attribution e Grad-CAM funzionano comunque e l'agent ricade automaticamente sulla spiegazione *template-based*.
+
+---
+
+## Installazione e Configurazione
+
+```bash
+# 1. Clona il repository
+git clone https://github.com/giuliopedicone02/MultimediaForensics.git
+cd MultimediaForensics/Progetto
+
+# 2. Ambiente virtuale
+python -m venv .venv && source .venv/bin/activate
+
+# 3a. Installazione libreria (detection + attribution + Grad-CAM)
+pip install -e .
+
+# 3b. Con l'agent VLM (richiede GPU CUDA per il 4-bit)
+pip install -e ".[vlm]"
+
+# 4. Scarica un subset del dataset (4 classi x N immagini) da HuggingFace
+python scripts/download_data.py --per-class 300
+```
+
+Il download popola `data/<classe>/` con le classi `real`, `stylegan`, `stylegan3`, `sdxl`:
 
 ```
-                ┌─────────────┐   embedding
-   immagine ───▶│ ResNet18 RGB │──────────────┐
-       │        └─────────────┘               │
-       │ FFT                                   ▼
-       ▼        ┌─────────────┐   embedding  ┌────────────┐  ① detection (real/fake)
-   spettro ────▶│ ResNet18 FFT │────────────▶│ MLP +      │
-                └─────────────┘   concat 1024 │ 2 teste    │─▶ ② se fake: attribution
-                                              └────────────┘      (StyleGAN/3/SDXL)
-                Grad-CAM (RGB+FFT) ┐
-                probabilità        ├──▶  Agent VLM  ──▶  spiegazione NL (perché)
-                immagini           ┘
+data/
+├── real/        # FFHQ                 (bitmind/ffhq-256)
+├── stylegan/    # StyleGAN             (34data/STYLEGAN)
+├── stylegan3/   # StyleGAN3            (34data/stylegan3_T_FFHQU_processed)
+└── sdxl/        # Stable Diffusion XL  (bitmind/ffhq-256___stable-diffusion-xl-base-1.0)
 ```
+
+> [!IMPORTANT]
+> `data/` e `results/` sono **gitignorati** (dataset e artefatti pesano): vanno rigenerati con `download_data.py` su ogni nuova macchina/runtime. Le classi assenti su disco vengono ignorate automaticamente, quindi puoi partire con un sottoinsieme.
+
+La configurazione è centralizzata in [`configs/default.yaml`](configs/default.yaml) e nella dataclass `dffa.config.Config` (serializzabile YAML round-trip). Parametri principali:
+
+```yaml
+classes: [real, stylegan, stylegan3, sdxl]
+image_size: 224
+max_per_class: null      # null = tutte; es. 250 per un run rapido
+epochs: 30
+batch_size: 32
+lr: 0.001
+vlm_model_id: Qwen/Qwen2.5-VL-3B-Instruct
+vlm_load_in_4bit: true
+seed: 42
+```
+
+---
+
+## Guida all'uso
+
+### Esecuzione completa (consigliata) — notebook su Colab T4
+
+```text
+1. Apri  notebooks/01_deepfake_forensics_colab.ipynb  in Google Colab
+2. Runtime → Change runtime type → T4 GPU
+3. Esegui la cella "0. Bootstrap": su Colab fa clone + install + download dataset
+4. Esegui le celle in ordine:
+   setup → config → dati → feature → training → valutazione →
+   Grad-CAM → spiegazione VLM → salvataggio risultati
+```
+
+La cella di bootstrap è **idempotente**: su Colab esegue `git clone`, installa le dipendenze e scarica i dati; in locale (dove `dffa` è già importabile) si salta da sola.
+
+### Uso programmatico della libreria
+
+```python
+from dffa.config import Config
+from dffa.data import build_splits
+from dffa.features import DualStreamExtractor
+from dffa.engine import extract_embeddings, train_classifier, evaluate, _loader_from_blob
+from dffa.utils import set_seed, get_device
+
+cfg = Config(classes=["real", "stylegan", "stylegan3", "sdxl"], max_per_class=250)
+set_seed(cfg.seed)
+device = get_device(cfg.device)
+
+splits = build_splits(cfg)
+extractor = DualStreamExtractor(pretrained=True, freeze=True).to(device)
+
+# embedding pre-calcolati e messi in cache su disco
+blobs = {s: extract_embeddings(splits[s], cfg, extractor, device,
+                               cache_path=f"results/emb_{s}.pt")
+         for s in ["train", "val", "test"]}
+
+# training multi-task (detection + attribution) con selezione su cascade_acc
+model, history = train_classifier(blobs["train"], blobs["val"], cfg, device)
+
+# valutazione end-to-end
+res = evaluate(model, _loader_from_blob(blobs["test"], cfg, shuffle=False), cfg, device)
+print(res["detection_acc"], res["attribution_acc"], res["cascade_acc"])
+```
+
+### Spiegazione di una predizione (Grad-CAM + VLM)
+
+```python
+from dffa.models import cascade_predict
+from dffa.explain import VLMExplainer, build_evidence
+
+# decisione a cascata: detection → se fake → attribution
+pred, decisions = cascade_predict(model, emb, cfg.generator_classes)
+
+# agent VLM (con fallback template se la GPU/modello non è disponibile)
+explainer = VLMExplainer(cfg.vlm_model_id, load_in_4bit=cfg.vlm_load_in_4bit)
+explainer.load()
+evidence = build_evidence(pred["detection_prob"][0].cpu().numpy(),
+                          pred["attribution_prob"][0].cpu().numpy(),
+                          cfg.generator_classes)
+exp = explainer.explain(images, evidence)   # images: {'rgb','fourier','gradcam'}
+print(exp.source, exp.text)                 # source: "vlm" | "template"
+```
+
+### Download — opzioni della CLI
+
+```bash
+python scripts/download_data.py --per-class 500              # 500 per classe
+python scripts/download_data.py --only real stylegan        # solo alcune classi
+python scripts/download_data.py --per-class 300 --out data  # cartella di output
+```
+
+---
+
+## Test
+
+Il progetto **non include una suite `pytest`**: la validazione è effettuata tramite uno *smoke test* end-to-end della pipeline su un sottoinsieme dei dati. Per verificare l'intera catena in locale (CPU, in pochi secondi):
+
+```bash
+# 1. Verifica che il package importi e che la Config faccia round-trip YAML
+python -c "import dffa; from dffa.config import Config; \
+Config().to_yaml('results/_cfg.yaml'); print('dffa', dffa.__version__, 'OK')"
+
+# 2. Validità strutturale del notebook (JSON nbformat)
+python -c "import json; nb=json.load(open('notebooks/01_deepfake_forensics_colab.ipynb')); \
+print('notebook OK:', nb['nbformat'], len(nb['cells']), 'celle')"
+
+# 3. Smoke test della pipeline su un subset ridotto
+python -c "
+from dffa.config import Config
+from dffa.data import build_splits
+from dffa.features import DualStreamExtractor
+from dffa.engine import extract_embeddings, train_classifier, evaluate, _loader_from_blob
+from dffa.utils import set_seed, get_device
+cfg = Config(max_per_class=20); set_seed(cfg.seed); dev = get_device('cpu')
+sp = build_splits(cfg); ex = DualStreamExtractor().to(dev)
+b = {s: extract_embeddings(sp[s], cfg, ex, dev) for s in ['train','val','test']}
+m,_ = train_classifier(b['train'], b['val'], cfg, dev)
+r = evaluate(m, _loader_from_blob(b['test'], cfg, shuffle=False), cfg, dev)
+print('det', r['detection_acc'], 'attr', r['attribution_acc'], 'cascade', r['cascade_acc'])
+"
+```
+
+> [!NOTE]
+> Lo smoke test richiede che `data/<classe>/` sia già popolata (vedi *Installazione*). Con un modello poco addestrato i valori di accuracy sono solo indicativi: servono a verificare che la pipeline giri end-to-end senza errori.
 
 ---
 
@@ -59,98 +234,37 @@ L'**explainability** è a due livelli:
 
 ```
 Progetto/
-├── README.md
-├── pyproject.toml            # package installabile (pip install -e .)
-├── requirements.txt
-├── configs/
-│   └── default.yaml          # iperparametri e percorsi
-├── dffa/                     # libreria
-│   ├── config.py             # dataclass di configurazione (YAML)
-│   ├── data/dataset.py       # dataset dual-stream + split stratificati
+├── configs/default.yaml          # iperparametri e percorsi
+├── dffa/                         # libreria
+│   ├── config.py                 # dataclass di configurazione (YAML)
+│   ├── data/dataset.py           # dataset dual-stream + split stratificati
 │   ├── features/
-│   │   ├── fourier.py        # spettro di Fourier
-│   │   └── extractor.py      # ResNet18 embedder (RGB + Fourier)
-│   ├── models/classifier.py  # MLP multi-task (detection + attribution)
+│   │   ├── fourier.py            # spettro di Fourier
+│   │   └── extractor.py          # ResNet18 embedder (RGB + Fourier)
+│   ├── models/classifier.py      # MLP multi-task + cascade_predict
 │   ├── explain/
-│   │   ├── gradcam.py        # Grad-CAM + overlay
-│   │   └── vlm_agent.py      # agent VLM open (+ fallback template)
-│   ├── engine.py             # estrazione embedding (cache), train, eval
-│   └── utils/common.py       # seed, device, I/O
-├── notebooks/
-│   └── 01_deepfake_forensics_colab.ipynb   # pipeline end-to-end (Colab)
-├── report/report.md          # relazione
-├── docs/architecture.md      # dettaglio architetturale
-├── data/                     # dataset (NON versionato)
-└── results/                  # metriche, figure, spiegazioni (NON versionato)
+│   │   ├── gradcam.py            # Grad-CAM + overlay
+│   │   └── vlm_agent.py          # agent VLM open (+ fallback template)
+│   ├── engine.py                 # embedding (cache), train, eval
+│   └── utils/common.py           # seed, device, I/O
+├── scripts/download_data.py      # download subset da HuggingFace (/rows)
+├── notebooks/01_deepfake_forensics_colab.ipynb
+├── docs/architecture.md          # dettaglio architetturale
+├── report/report.md              # relazione
+├── data/                         # dataset (NON versionato)
+└── results/                      # metriche, figure, cache (NON versionato)
 ```
 
 ---
 
-## Dataset
+## Riferimenti
 
-Layout atteso (una sottocartella per classe di attribution):
-
-```
-data/
-├── real/         # FFHQ — volti reali
-├── stylegan/     # StyleGAN
-├── stylegan2/    # StyleGAN2
-└── stylegan3/    # StyleGAN3
-```
-
-Indicazioni:
-
-- **Reali**: [FFHQ](https://github.com/NVlabs/ffhq-dataset) (o un subset, es.
-  `thumbnails128x128`).
-- **Fake**: immagini generate da StyleGAN/StyleGAN2/StyleGAN3 (es. i checkpoint
-  ufficiali NVlabs o subset già pronti su HuggingFace Hub / Kaggle).
-- Per un bilanciamento ~1000 immagini, usa `max_per_class` in `configs/default.yaml`
-  (es. 250 per classe). Lo split è **stratificato** e riproducibile (`seed`).
-
-> Le classi assenti su disco vengono ignorate automaticamente: puoi partire con
-> `real` + `stylegan` e aggiungere gli altri generatori in un secondo momento.
-
----
-
-## Quickstart (Google Colab, T4)
-
-1. Apri `notebooks/01_deepfake_forensics_colab.ipynb` in Colab.
-2. `Runtime → Change runtime type → T4 GPU`.
-3. Esegui le celle in ordine: setup → dati → feature → training → valutazione →
-   Grad-CAM → spiegazioni VLM → salvataggio risultati.
-
-## Quickstart (locale)
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[vlm]"          # libreria + dipendenze VLM
-# disponi i dati in data/<classe>/ e poi apri il notebook
-```
-
-> Senza GPU il classificatore e il Grad-CAM funzionano comunque (più lenti);
-> il VLM in 4-bit richiede CUDA — in assenza, l'agent ricade automaticamente su
-> una spiegazione template-based deterministica.
-
----
-
-## Explainability: come legge l'output
-
-- **Detection** — la spiegazione cita gli artefatti nel dominio della frequenza
-  (griglie periodiche dello spettro), la coerenza di texture/illuminazione e le
-  regioni evidenziate dal Grad-CAM sull'immagine RGB.
-- **Attribution** — la spiegazione si appoggia alla *firma spettrale* specifica
-  dell'architettura generativa e alla distribuzione di probabilità tra i
-  generatori candidati.
-
----
-
-## Riproducibilità
-
-- Seed globale (Python/NumPy/PyTorch) e cuDNN deterministico (`dffa/utils`).
-- Configurazione interamente serializzata in YAML.
-- Embedding pre-calcolati e messi in cache: il training del classificatore è
-  deterministico e dura pochi secondi.
+- Karras et al., *A Style-Based Generator Architecture for GANs* (StyleGAN), CVPR 2019.
+- Karras et al., *Alias-Free GAN* (StyleGAN3), NeurIPS 2021.
+- Frank et al., *Leveraging Frequency Analysis for Deep Fake Image Recognition*, ICML 2020.
+- Selvaraju et al., *Grad-CAM: Visual Explanations from Deep Networks*, ICCV 2017.
+- Bai et al., *Qwen2.5-VL Technical Report*, 2025.
 
 ## Licenza
 
-MIT — vedi [LICENSE](LICENSE).
+Distribuito sotto licenza **MIT** — vedi [LICENSE](LICENSE).
