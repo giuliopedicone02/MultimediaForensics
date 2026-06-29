@@ -22,8 +22,12 @@ sono elevati (detection acc = 0.947, attribution acc sui fake = 1.000, cascade a
 0.947) ma gli esperimenti di controllo mostrano che dipendono in larga parte da un
 **confound di sorgente**: in un test *leave-one-generator-out* la detection su un
 generatore mai visto crolla a 0.544 di media (recall sui fake nuovi fino a 0.00 per
-SDXL). Il contributo principale di questo lavoro è quindi **metodologico**:
-identificare, misurare e discutere onestamente tale confound.
+SDXL). Quando però si isola una coppia a **sorgente condivisa** (volti reali FFHQ-256
+vs SDXL generati dalla stessa base), la detection raggiunge 0.987 e **resta invariata
+dopo la normalizzazione del colore**, indicando una capacità di rilevamento *genuina*
+(seppur specifica per SDXL). Il contributo principale di questo lavoro è quindi
+**metodologico**: identificare, misurare e discutere onestamente tale confound,
+isolando con un benchmark controllato il segnale forense reale.
 
 ## 1. Introduzione
 
@@ -291,6 +295,52 @@ diretta che le metriche in-distribution riflettono la memorizzazione della firma
 delle sorgenti note, non una reale capacità di rilevare contenuto sintetico
 sconosciuto.
 
+### 5.7 Benchmark *same-source* (real vs SDXL) — il risultato di cui ci si può fidare
+
+Tutti gli esperimenti precedenti soffrono del fatto che *generatore* e *dataset di
+origine* coincidono. Esiste però **una coppia a sorgente condivisa**: `real`
+(`bitmind/ffhq-256`) e `sdxl` (`bitmind/ffhq-256___stable-diffusion-xl-base-1.0`)
+provengono dalla **stessa** base FFHQ-256, con identico contenitore. Verificato sui
+file: entrambe **PNG, 256×256, RGB**, dimensione media simile (90 vs 84 KB) → niente
+confound banale di formato/risoluzione. La differenza dominante è quindi il *processo
+generativo*. Su questa coppia la detection è molto più affidabile.
+
+**Detection a coppie (real vs singolo generatore, test bilanciato 38+38):**
+
+| Coppia | Detection acc | Sorgente |
+|--------|--------------:|----------|
+| real vs StyleGAN | 0.934 | diversa |
+| real vs StyleGAN3 | 0.974 | diversa |
+| **real vs SDXL** | **0.987** | **condivisa (FFHQ-256)** |
+
+La coppia pulita real vs SDXL raggiunge **0.987** (matrice di confusione `[[38,0],[1,37]]`:
+un solo errore reale, non il sospetto diagonale perfetto dell'attribution). Ablation
+degli stream sulla coppia: **RGB 0.987**, Fourier 0.763, Both 0.987 → il segnale è
+ancora nell'RGB.
+
+**Controllo dei confound residui.** Anche la coppia pulita potrebbe nascondere una
+differenza *a livello di set* (es. colore medio diverso). Due verifiche:
+
+1. *Baseline banale* (solo media+std dei colori, 6 valori → regressione logistica):
+   real vs SDXL = **0.784**. Esiste quindi una differenza di colore di set, ben sopra
+   il caso (0.5): da sola spiega ~78%.
+2. *Color-normalization* (standardizzazione per-canale di ogni immagine, che azzera
+   quella differenza): la detection RGB resta a **0.987**, **invariata**.
+
+| Condizione | Detection acc (real vs SDXL) |
+|------------|-----------------------------:|
+| RGB normale (ImageNet) | 0.987 |
+| RGB + color-normalization | 0.987 |
+| Baseline banale (solo colore) | 0.784 |
+
+**Lettura.** La detection di SDXL **sopravvive** alla rimozione del colore: il modello
+non si appoggia alla differenza di colore di set (che pure esiste, 0.78), ma a
+**struttura per-immagine** — verosimilmente i veri artefatti di sintesi. Questo è
+l'unico numero del lavoro che riflette una capacità forense *genuina*: con sorgente
+controllata, il sistema distingue volti reali da volti SDXL al **98.7%**, in modo
+robusto alla normalizzazione del colore. Resta però **specifico per SDXL**: il LOGO
+(§5.6) mostra che questa capacità **non** si trasferisce a generatori mai visti.
+
 ## 6. Analisi qualitativa dell'explainability
 
 Per un campione di test si riportano immagine RGB, spettro di Fourier, overlay
@@ -347,6 +397,13 @@ prompt che dà per scontati gli artefatti.
 - **Generalizzazione (§5.6, LOGO).** Su un generatore mai visto la detection
   **crolla** rispetto all'in-distribution: prova diretta che il rilevatore non
   generalizza alla "fakeness" in senso lato, ma memorizza le sorgenti note.
+- **Segnale genuino su sorgente controllata (§5.7).** Il rovescio positivo: sulla
+  coppia same-source real vs SDXL la detection è 0.987 e **resta invariata dopo la
+  color-normalization**, mentre una baseline di solo colore si ferma a 0.78. Quindi,
+  *a parità di sorgente*, il modello sfrutta artefatti di sintesi reali, non la firma
+  del dataset. È la prova che il problema non è il modello ma il **disegno dei dati**:
+  controllando la sorgente, una capacità forense autentica emerge (per quanto specifica
+  per SDXL).
 - **Confound della risoluzione (§5.5a).** Identificato e mitigato con la risoluzione
   canonica (§3.1), ma da solo sposta poco le metriche: era una delle cause, non
   l'unica.
@@ -370,7 +427,10 @@ l'analisi critica — risoluzione canonica, ablation degli stream e soprattutto 
 del **confound di sorgente**: nel dataset i generatori coincidono con dataset di
 origine distinti, e il modello ne memorizza la firma invece di apprendere la
 "sinteticità" in generale. Su un generatore mai visto la detection scende a 0.544
-(recall 0.00 su SDXL). Il valore del lavoro è quindi metodologico: mostrare come si
+(recall 0.00 su SDXL). Il rovescio positivo è il **benchmark same-source** (§5.7):
+isolando la coppia real vs SDXL (stessa base FFHQ-256), la detection raggiunge 0.987
+e **sopravvive alla normalizzazione del colore**, prova che — a parità di sorgente —
+il modello coglie artefatti di sintesi genuini, non solo la firma del dataset. Il valore del lavoro è quindi metodologico: mostrare come si
 smaschera un risultato troppo bello per essere vero.
 
 **Sviluppi futuri.** (i) Un benchmark *controllato* in cui i fake siano generati
