@@ -375,9 +375,44 @@ prompt, che invece affermava con sicurezza "griglie periodiche e picchi di frequ
 tipici delle GAN" — un esempio concreto di spiegazione *non fedele* indotta da un
 prompt che dà per scontati gli artefatti.
 
-> **Esempio REAL corretto** e **caso di errore**: _(opzionali — selezionare un
-> campione real e uno mal classificato e ripetere la procedura della sezione 8-9 del
-> notebook.)_
+### Esempio REAL correttamente classificato
+
+![Esempio REAL: RGB, spettro, Grad-CAM](figures/real_example.png)
+
+Immagine reale (FFHQ) classificata `real` con confidenza **99.96%** (p_fake = 0.04%).
+Essendo *real*, la cascata non procede all'attribution (non applicabile). Il Grad-CAM
+si concentra sui volti e lo spettro non mostra strutture periodiche. La spiegazione
+VLM resta cauta e non forza la presenza di artefatti:
+
+> «Il spettro di Fourier non evidenzia particolari artefatti o incoerenze
+> significative […]. La mappa Grad-CAM mostra una concentrazione di colori rossi
+> intorno ai volti delle persone […]. Le predizioni del classificatore confermano che
+> l'immagine è reale con una certa sicurezza, con una probabilità di 99,96% che sia
+> reale […]. Dato che non sono presenti artefatti evidenti […], l'assenza visiva non
+> è comunque una prova definitiva.» *(fonte: Qwen2.5-VL)*
+
+### Caso mal classificato (falso positivo)
+
+![Caso mal classificato: RGB, spettro, Grad-CAM](figures/misclassified_example.png)
+
+Immagine **reale** erroneamente classificata `fake` (p_fake = **81.1%**) e — per via
+della cascata — attribuita a StyleGAN (conf. 56.3%). È un **falso positivo**
+istruttivo: il modello dichiara "fake" con discreta confidenza pur in assenza di
+artefatti visibili, e l'agent VLM lo segnala onestamente:
+
+> «Il classificatore ha identificato l'immagine come FAKE con una confidenza del
+> 81.12% […]. Le evidenze visive realmente osservabili includono la presenza di
+> occhiali [e] un gesto del dito sul labbro […]. **Tuttavia, non sono presenti griglie
+> periodiche o artefatti di texture evidenti.** Per quanto riguarda l'attribuzione, il
+> modello potrebbe basarsi su indizi di sorgente non visibili a occhio, come
+> statistiche di colore, compressione o risoluzione legate alla sorgente dei dati.»
+> *(fonte: Qwen2.5-VL)*
+
+Questo errore illustra in modo concreto il tema centrale del lavoro: la decisione del
+classificatore **non** poggia su artefatti percepibili (il VLM, col prompt cauto, non
+ne trova), bensì su statistiche di sorgente non visibili — le stesse che gonfiano le
+metriche in-distribution e che il LOGO (§5.6) smaschera. La spiegazione fedele rende
+l'errore *interpretabile* invece di mascherarlo con artefatti inventati.
 
 ## 7. Discussione
 
