@@ -111,10 +111,20 @@ flowchart TD
 
     I --> J[Output finale:<br/>perche real/fake<br/>perche quel generatore]
 
-    style E fill:#ffe0b2
-    style G fill:#ffccbc
-    style I fill:#c8e6c9
-    style J fill:#bbdefb
+    %% fill chiaro + testo scuro su OGNI nodo: leggibile sia in tema chiaro sia scuro
+    classDef step fill:#eceff1,stroke:#607d8b,color:#1a1a1a
+    classDef det  fill:#ffe0b2,stroke:#e65100,color:#1a1a1a
+    classDef attr fill:#ffccbc,stroke:#bf360c,color:#1a1a1a
+    classDef stop fill:#cfd8dc,stroke:#455a64,color:#1a1a1a
+    classDef vlm  fill:#c8e6c9,stroke:#2e7d32,color:#1a1a1a
+    classDef out  fill:#bbdefb,stroke:#1565c0,color:#1a1a1a
+
+    class A,B,C1,C2,D,H step
+    class E det
+    class G attr
+    class F stop
+    class I vlm
+    class J out
 ```
 
 Il flusso si **biforca** dopo la detection: se *real* salta l'attribution e passa
