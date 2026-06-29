@@ -73,7 +73,10 @@ class Config:
 
     # --- runtime ---
     seed: int = 42
-    num_workers: int = 2
+    # 0 = nessun subprocess: evita i warning di shutdown dei worker del DataLoader
+    # in ambiente interattivo (IPython/Colab). L'estrazione embedding su ~1000
+    # immagini con backbone congelato è comunque rapida.
+    num_workers: int = 0
     results_dir: str = "results"
     device: str = "auto"                # "auto" | "cuda" | "cpu"
 

@@ -37,6 +37,6 @@ vlm_enabled: true
 
 # --- runtime ---
 seed: 42
-num_workers: 2
+num_workers: 0            # 0 = niente subprocess: evita i warning del DataLoader su Colab/IPython
 results_dir: results
 device: auto
