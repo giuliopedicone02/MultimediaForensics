@@ -2,7 +2,7 @@
 
 **Corso:** Multimedia Forensics — Laurea Magistrale (II anno), A.A. 2025-26 (UniCT)
 **Autore:** Giulio Pedicone
-**Data:** _(da compilare)_
+**Data:** Giugno 2026
 
 ---
 
@@ -18,10 +18,10 @@ attribution tra i generatori). Il sistema integra l'**explainability**: Grad-CAM
 sui due stream e un **agent VLM open** (Qwen2.5-VL) che motiva in linguaggio
 naturale il *perché* di detection e attribution. L'intero esperimento è
 eseguibile gratuitamente su Google Colab (GPU T4). I risultati *in-distribution*
-sono elevati (detection acc = 0.967, attribution acc sui fake = 0.991, cascade acc =
-0.961) ma gli esperimenti di controllo mostrano che dipendono in larga parte da un
+sono elevati (detection acc = 0.947, attribution acc sui fake = 1.000, cascade acc =
+0.947) ma gli esperimenti di controllo mostrano che dipendono in larga parte da un
 **confound di sorgente**: in un test *leave-one-generator-out* la detection su un
-generatore mai visto crolla a 0.557 di media (recall sui fake nuovi fino a 0.00 per
+generatore mai visto crolla a 0.544 di media (recall sui fake nuovi fino a 0.00 per
 SDXL). Il contributo principale di questo lavoro è quindi **metodologico**:
 identificare, misurare e discutere onestamente tale confound.
 
@@ -135,7 +135,13 @@ di paragone nell'ablation §5.5).
 Lo stream RGB lavora nel dominio spaziale (texture, artefatti semantici). Lo
 stream Fourier converte l'immagine in scala di grigi, ne calcola la FFT 2D, centra
 la frequenza zero (`fftshift`), prende la magnitudine in scala logaritmica
-`log(1+|F|)` normalizzata in `[0,1]` e la replica su 3 canali. Motivazione: le
+`log(1+|F|)` normalizzata in `[0,1]` e la replica su 3 canali.
+**Normalizzazione robusta (`fourier_robust`).** La componente DC (frequenza 0) ha
+magnitudine enorme: con un semplice min-max globale dominerebbe la scala,
+comprimendo gli artefatti periodici di media/alta frequenza — proprio il segnale
+forense utile. Lo spettro viene quindi clippato al 99° percentile prima di scalare,
+espandendo la dinamica delle frequenze informative (l'effetto è quantificato in
+§5.5b). Motivazione: le
 convoluzioni trasposte / l'up-sampling dei generatori introducono **artefatti
 periodici** nello spettro, spesso invisibili nel dominio spaziale ma evidenti in
 frequenza. I due stream sono quindi complementari.
@@ -179,7 +185,8 @@ spiegazione coerente con le evidenze numeriche.
 
 - **Hardware:** Google Colab GPU T4 (16 GB).
 - **Pre-processing:** risoluzione canonica `canonical_size = 256` (bicubica), poi
-  224×224 + normalizzazione ImageNet.
+  224×224 + normalizzazione ImageNet. Spettro di Fourier con normalizzazione robusta
+  (`fourier_robust = True`, clipping al 99° percentile).
 - **Backbone:** ResNet18 (ImageNet), congelata; embedding 512+512 = 1024-d.
 - **Iperparametri:** epochs = 30, batch = 32, lr = 1e-3, weight decay = 1e-4,
   dropout = 0.3, hidden_dim = 256, `attribution_weight = detection_weight = 1.0`.
@@ -192,25 +199,26 @@ spiegazione coerente con le evidenze numeriche.
 
 | Metrica | Valore |
 |---------|-------:|
-| Accuracy | 0.967 |
-| Precision (macro) | 0.95 |
-| Recall (macro) | 0.97 |
-| F1 (macro) | 0.96 |
+| Accuracy | 0.947 |
+| Precision (macro) | 0.937 |
+| Recall (macro) | 0.921 |
+| F1 (macro) | 0.929 |
 
-Per classe (test = 38 real, 114 fake): `real` precision 0.90 / recall 0.97;
-`fake` precision 0.99 / recall 0.96.
+Per classe (test = 38 real, 114 fake): `real` precision 0.92 / recall 0.87;
+`fake` precision 0.96 / recall 0.97. Matrice di confusione: 33/38 real corretti
+(5 falsi positivi), 111/114 fake corretti (3 fake scambiati per real).
 
 ### 5.2 Attribution (multi-generatore, solo sui fake)
 
-- Accuracy (sui soli fake): **0.991** (113/114).
-- Per generatore (F1): `stylegan` 0.99, `stylegan3` 1.00, `sdxl` 0.99.
-- Matrice di confusione tra generatori: _(figura dal notebook, §7)_ — quasi diagonale.
+- Accuracy (sui soli fake): **1.000** (114/114).
+- Per generatore (F1): `stylegan` 1.00, `stylegan3` 1.00, `sdxl` 1.00.
+- Matrice di confusione tra generatori: perfettamente diagonale (38/38 per classe).
 - ⚠️ Questo valore è **gonfiato dal confound di sorgente** (vedi §5.5b: il solo
-  stream RGB attribuisce al 100%) e va letto alla luce del LOGO (§5.6).
+  stream RGB attribuisce a ~0.97) e va letto alla luce del LOGO (§5.6).
 
 ### 5.3 Cascade (end-to-end)
 
-- Cascade accuracy (detection come gate → attribution): **0.961**.
+- Cascade accuracy (detection come gate → attribution): **0.947**.
 
 ### 5.4 Curve di training
 
@@ -231,7 +239,7 @@ quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti rea
 | Pipeline | Detection acc | Attribution acc (fake) | Cascade acc |
 |----------|--------------:|-----------------------:|------------:|
 | RAW (`canonical_size=None`) | 0.980 | 1.000 | 0.980 |
-| CANONICA (256) | 0.967 | 0.991 | 0.961 |
+| CANONICA (256) | 0.947 | 1.000 | 0.947 |
 
 > Osservazione (dal run): l'uniformazione della risoluzione sposta **poco** le
 > metriche (es. attribution 1.00 → 0.99). La risoluzione era quindi solo **uno** dei
@@ -239,21 +247,26 @@ quanto il modello "RAW" si appoggiasse al confound invece che agli artefatti rea
 > grading, pipeline del dataset). L'ablation (b) e soprattutto il LOGO (§5.6) lo
 > mostrano in modo netto.
 
-**(b) Contributo degli stream** (sui dati canonici): solo RGB, solo Fourier, entrambi.
+**(b) Contributo degli stream** (sui dati canonici, con normalizzazione Fourier
+robusta §3.2): solo RGB, solo Fourier, entrambi.
 
 | Stream | Detection acc | Attribution acc (fake) | Cascade acc |
 |--------|--------------:|-----------------------:|------------:|
-| RGB-only | 0.961 | 1.000 | 0.961 |
-| Fourier-only | 0.763 | 0.842 | 0.671 |
-| Both | 0.961 | 0.991 | 0.954 |
+| RGB-only | 0.961 | 0.965 | 0.947 |
+| Fourier-only | 0.757 | 0.868 | 0.691 |
+| Both | 0.954 | 0.974 | 0.941 |
 
-Il segnale è **dominato dall'RGB** (attribution perfetta da solo); lo stream Fourier
+Il segnale è **dominato dall'RGB** (attribution ≈ 0.97 da solo); lo stream Fourier
 — quello motivato dagli artefatti di frequenza — è nettamente il più debole. Questo
 ridimensiona l'ipotesi di partenza e indica che l'RGB cattura indizi di sorgente
 (colore/compressione) più che veri artefatti generativi.
 
-> Permette di capire se i due stream sono davvero complementari o se uno domina.
-> _(da compilare dal run.)_
+> **Effetto della normalizzazione robusta dello spettro (§3.2).** Clippando il picco
+> DC, l'attribution del solo stream Fourier sale da 0.842 (min-max legacy) a **0.868**:
+> una rappresentazione più pulita rende lo stream un po' più informativo, ma resta il
+> più debole — il miglioramento **non** si propaga alla generalizzazione (vedi §5.6:
+> il LOGO non migliora). Conferma che il collo di bottiglia non è la rappresentazione
+> della frequenza, ma il confound di sorgente nei dati.
 
 ### 5.6 Generalizzazione — Leave-One-Generator-Out (LOGO)
 
@@ -264,14 +277,14 @@ firma di ciascun dataset.
 
 | Held-out (mai visto) | Detection acc | Recall sui fake mai visti |
 |----------------------|--------------:|--------------------------:|
-| StyleGAN | 0.566 | 0.132 |
-| StyleGAN3 | 0.618 | 0.289 |
-| SDXL | 0.487 | 0.000 |
-| **media** | **0.557** | — |
+| StyleGAN | 0.592 | 0.211 |
+| StyleGAN3 | 0.566 | 0.211 |
+| SDXL | 0.474 | 0.000 |
+| **media** | **0.544** | — |
 
-Riferimento in-distribution: detection acc = 0.967. La detection **crolla a 0.557**
+Riferimento in-distribution: detection acc = 0.947. La detection **crolla a 0.544**
 (vicino al caso, dato che il test è ~50% real / 50% fake) e il **recall sui fake mai
-visti precipita**: 0.13, 0.29 e **0.00** per SDXL. Il caso SDXL è il più indicativo:
+visti precipita**: 0.21, 0.21 e **0.00** per SDXL. Il caso SDXL è il più indicativo:
 è un modello *diffusion*, mentre l'addestramento (sui soli StyleGAN/StyleGAN3) ha
 visto solo *GAN* → il rilevatore classifica **tutti** gli SDXL come reali. È la prova
 diretta che le metriche in-distribution riflettono la memorizzazione della firma
@@ -319,26 +332,30 @@ prompt che dà per scontati gli artefatti.
 ## 7. Discussione
 
 - **Risultato principale (onesto).** Le metriche in-distribution sono alte
-  (detection ≈ 0.97, attribution ≈ 0.99) ma **non vanno interpretate come reale
+  (detection ≈ 0.95, attribution = 1.00) ma **non vanno interpretate come reale
   capacità forense**: gli esperimenti di controllo mostrano che derivano in larga
   parte da un **confound di sorgente**. Nel nostro dataset *generatore* e *dataset di
   origine* sono perfettamente correlati (ogni classe = un dataset HF distinto, con la
   sua compressione, risoluzione e color pipeline), quindi il modello può separare le
   classi dalla "firma" della sorgente anziché dagli artefatti generativi.
 - **Contributo degli stream (§5.5b).** Il segnale è dominato dallo stream **RGB**
-  (attribution ≈ 1.00 da solo), mentre lo stream **Fourier** — quello motivato dagli
-  artefatti di frequenza — è il più debole. Questo ridimensiona l'ipotesi di partenza
-  e suggerisce che l'RGB sta catturando indizi di sorgente (colore/compressione).
+  (attribution ≈ 0.97 da solo), mentre lo stream **Fourier** — quello motivato dagli
+  artefatti di frequenza — è il più debole. La normalizzazione robusta dello spettro
+  (§3.2) lo migliora solo marginalmente (attr Fourier-only 0.842 → 0.868) e non
+  sposta la generalizzazione. Questo ridimensiona l'ipotesi di partenza e suggerisce
+  che l'RGB sta catturando indizi di sorgente (colore/compressione).
 - **Generalizzazione (§5.6, LOGO).** Su un generatore mai visto la detection
   **crolla** rispetto all'in-distribution: prova diretta che il rilevatore non
   generalizza alla "fakeness" in senso lato, ma memorizza le sorgenti note.
 - **Confound della risoluzione (§5.5a).** Identificato e mitigato con la risoluzione
   canonica (§3.1), ma da solo sposta poco le metriche: era una delle cause, non
   l'unica.
-- **Fedeltà del VLM.** La spiegazione cita con sicurezza artefatti di frequenza
-  ("griglie periodiche") che però l'ablation mostra poco usati dal modello (Fourier
-  debole): la spiegazione è fluente ma non sempre **fedele** al reale processo
-  decisionale — limite noto degli explainer generativi.
+- **Fedeltà del VLM.** Con un *system prompt* cauto e decoding deterministico (§6)
+  l'agent **non inventa** più artefatti di frequenza e cita esplicitamente la
+  possibilità di indizi di sorgente non visibili — coerente con ablation e LOGO. Resta
+  però un limite noto degli explainer generativi: la fedeltà dipende dal prompt e va
+  verificata caso per caso (una versione precedente, non cauta, asseriva "griglie
+  periodiche" inesistenti).
 - **Altri limiti:** dimensione contenuta del dataset; un solo dominio (volti);
   robustezza a compressione/resize non valutata sistematicamente; fedeltà delle
   spiegazioni del VLM da verificare (rischio di artefatti "plausibili" ma non reali).
@@ -347,12 +364,12 @@ prompt che dà per scontati gli artefatti.
 
 Abbiamo realizzato una pipeline completa di detection + attribution a cascata con
 explainability (Grad-CAM + agent VLM), eseguibile gratuitamente su Colab T4. I
-risultati in-distribution sono elevati (detection 0.967, attribution 0.991), ma
+risultati in-distribution sono elevati (detection 0.947, attribution 1.000), ma
 l'analisi critica — risoluzione canonica, ablation degli stream e soprattutto il test
 *leave-one-generator-out* — dimostra che tali valori sono in gran parte un artefatto
 del **confound di sorgente**: nel dataset i generatori coincidono con dataset di
 origine distinti, e il modello ne memorizza la firma invece di apprendere la
-"sinteticità" in generale. Su un generatore mai visto la detection scende a 0.557
+"sinteticità" in generale. Su un generatore mai visto la detection scende a 0.544
 (recall 0.00 su SDXL). Il valore del lavoro è quindi metodologico: mostrare come si
 smaschera un risultato troppo bello per essere vero.
 
