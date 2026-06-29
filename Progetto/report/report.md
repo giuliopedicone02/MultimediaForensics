@@ -199,6 +199,16 @@ spiegazione coerente con le evidenze numeriche.
 
 ## 5. Risultati
 
+> **Nota sulla varianza tra run.** I valori riportati provengono da un singolo run
+> di riferimento. Pur fissando il seed, il training su GPU **non è perfettamente
+> deterministico** (kernel cuDNN non deterministici): rieseguendo la pipeline le
+> metriche di detection/cascade oscillano tipicamente di alcuni punti (es. detection
+> 0.95–0.98 su run diversi) e il numero di falsi positivi sui *real* varia (in alcuni
+> run è zero). Le **conclusioni qualitative** del lavoro — confound di sorgente,
+> crollo nel LOGO, segnale genuino nel benchmark *same-source* — sono invece **stabili**
+> tra run; i decimali esatti vanno letti come rappresentativi, non riproducibili
+> al millesimo.
+
 ### 5.1 Detection (real vs fake)
 
 | Metrica | Valore |
@@ -413,6 +423,13 @@ classificatore **non** poggia su artefatti percepibili (il VLM, col prompt cauto
 ne trova), bensì su statistiche di sorgente non visibili — le stesse che gonfiano le
 metriche in-distribution e che il LOGO (§5.6) smaschera. La spiegazione fedele rende
 l'errore *interpretabile* invece di mascherarlo con artefatti inventati.
+
+> **Riproducibilità di questo esempio.** Il falso positivo dipende dal run (vedi nota
+> di varianza in §5): in alcuni run la detection non commette falsi positivi sui *real*.
+> La cella §12 del notebook gestisce il caso — se non trova falsi positivi ripiega
+> automaticamente sul *real più vicino alla soglia* (probabilità di *real* più bassa),
+> che illustra comunque la fragilità della decisione al confine real/fake. La figura qui
+> sopra è un'istanza catturata da un run che presentava falsi positivi.
 
 ## 7. Discussione
 
