@@ -16,6 +16,8 @@ test_split: 0.15
 backbone: resnet18
 embedding_dim: 512
 fourier_log: true
+fourier_robust: true       # clippa il picco DC: espande gli artefatti di frequenza (false = legacy)
+fourier_clip_pct: 99.0     # percentile di clipping dello spettro
 
 # --- classificatore multi-task ---
 hidden_dim: 256

@@ -24,6 +24,13 @@ le statistiche di ImageNet (coerenza col backbone pre-addestrato).
   FFT 2D, si centra la frequenza zero (`fftshift`), si prende la magnitudine in
   scala logaritmica `log(1 + |F|)`, si normalizza in `[0,1]` e si replica su 3
   canali → ResNet18.
+  - **Normalizzazione robusta (`fourier_robust`, default on).** La componente DC
+    (frequenza 0) ha magnitudine enorme: con un semplice min-max globale dominerebbe
+    la scala, comprimendo in un range minimo gli artefatti periodici di media/alta
+    frequenza — proprio il segnale forense utile. Si clippa quindi lo spettro al
+    percentile `fourier_clip_pct` (default 99) prima di scalare, espandendo la
+    dinamica delle frequenze informative. Con `fourier_robust=False` si ripristina il
+    min-max globale (termine di paragone per l'ablation).
 
 Motivazione: i generatori GAN introducono **artefatti periodici** nello spettro
 (dovuti alle convoluzioni trasposte / up-sampling), spesso invisibili nel dominio

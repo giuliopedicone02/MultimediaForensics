@@ -110,7 +110,11 @@ class ForensicsDataset(Dataset):
             base = img
         rgb = self.rgb_tf(base)
         fft = fourier_spectrum_tensor(
-            base, size=self.cfg.image_size, log=self.cfg.fourier_log
+            base,
+            size=self.cfg.image_size,
+            log=self.cfg.fourier_log,
+            robust=self.cfg.fourier_robust,
+            clip_pct=self.cfg.fourier_clip_pct,
         )
         return {
             "rgb": rgb,

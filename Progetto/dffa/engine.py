@@ -36,7 +36,8 @@ def extract_embeddings(
     """Calcola (o carica) embedding 1024-d + etichette per un set di campioni."""
     # Firma del preprocessing: se cambia (es. risoluzione canonica), la cache
     # vecchia è incoerente e va ricalcolata.
-    prep = (cfg.canonical_size, cfg.image_size, cfg.fourier_log)
+    prep = (cfg.canonical_size, cfg.image_size, cfg.fourier_log,
+            cfg.fourier_robust, cfg.fourier_clip_pct)
     if cache_path and Path(cache_path).exists():
         blob = torch.load(cache_path, map_location="cpu")
         if blob.get("n") == len(samples) and blob.get("prep") == list(prep):

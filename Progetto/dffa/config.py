@@ -46,6 +46,14 @@ class Config:
     backbone: str = "resnet18"          # backbone dei due stream
     embedding_dim: int = 512            # dim. embedding di resnet18 (post global-pool)
     fourier_log: bool = True            # log-magnitudine dello spettro
+    # Normalizzazione robusta dello spettro: la componente DC (freq. 0) ha
+    # magnitudine enorme e, con un min-max globale, schiaccia gli artefatti
+    # periodici di media/alta frequenza — proprio il segnale forense utile. Con
+    # `fourier_robust=True` lo spettro viene clippato al percentile `fourier_clip_pct`
+    # prima di scalare, espandendo la dinamica delle frequenze informative.
+    # False = min-max globale (comportamento legacy, per l'ablation).
+    fourier_robust: bool = True
+    fourier_clip_pct: float = 99.0      # percentile di clipping (se fourier_robust)
 
     # --- classificatore multi-task ---
     hidden_dim: int = 256
