@@ -25,9 +25,12 @@ generatore mai visto crolla a 0.548 di media (recall sui fake nuovi fino a 0.00 
 SDXL). Quando però si isola una coppia a **sorgente condivisa** (volti reali FFHQ-256
 vs SDXL generati dalla stessa base), la detection raggiunge 0.987 e **resta invariata
 dopo la normalizzazione del colore**, indicando una capacità di rilevamento *genuina*
-(seppur specifica per SDXL). Il contributo principale di questo lavoro è quindi
-**metodologico**: identificare, misurare e discutere onestamente tale confound,
-isolando con un benchmark controllato il segnale forense reale.
+(seppur specifica per SDXL). Un test di **robustezza a post-processing** mostra inoltre
+che la detection regge blur e ridimensionamento ma **crolla sotto forte compressione
+JPEG** (0.60 a q30), il che ne delimita l'uso pratico. Il contributo principale di
+questo lavoro è quindi **metodologico**: identificare, misurare e discutere onestamente
+tali limiti (confound di sorgente, fragilità alla compressione), isolando con un
+benchmark controllato il segnale forense reale.
 
 ## 1. Introduzione
 
@@ -361,6 +364,48 @@ controllata, il sistema distingue volti reali da volti SDXL al **98.7%**, in mod
 robusto alla normalizzazione del colore. Resta però **specifico per SDXL**: il LOGO
 (§5.6) mostra che questa capacità **non** si trasferisce a generatori mai visti.
 
+### 5.8 Robustezza a post-processing (JPEG, blur, resize, rumore)
+
+Le immagini reali circolano quasi sempre **ricompresse, ridimensionate o rumorose**.
+Un rilevatore valutato solo su input "puliti" ne sovrastima la resa pratica. Qui il
+modello del run principale (nessun riaddestramento) è valutato su un test set
+**degradato**: ogni degradazione è applicata alla risoluzione **canonica (256)**, così
+tutte le classi subiscono la stessa alterazione e non si reintroduce il confound di
+risoluzione. Metrica: **detection accuracy** (real vs fake). Baseline pulita
+attraverso la stessa pipeline: **0.961**.
+
+![Robustezza della detection a post-processing](figures/robustness.png)
+
+| Degradazione | Lieve | → | → | Severa |
+|--------------|------:|---:|---:|------:|
+| **JPEG** (quality 95→30) | 0.954 | 0.816 (q75) | 0.651 (q50) | **0.599** (q30) |
+| **Blur gaussiano** (σ 0.5→2.0 px) | 0.961 | 0.928 | 0.875 | 0.855 |
+| **Downscale** (fattore 0.75→0.25) | 0.934 | 0.947 | 0.941 | 0.868 |
+| **Rumore gaussiano** (σ 5→30) | 0.809 | 0.757 | 0.750 | 0.750 |
+
+**Lettura.**
+
+- **JPEG è la minaccia principale.** Fino a q90 la detection regge (0.947), ma sotto
+  q75 crolla: **0.65 a q50**, **0.60 a q30**, ormai poco sopra il caso. La
+  quantizzazione DCT distrugge proprio gli **artefatti periodici di alta frequenza**
+  su cui si appoggia lo stream di Fourier — il segnale forense più fragile.
+- **Il rumore** abbatte subito l'accuratezza ma poi **satura a ~0.75**: sporca lo
+  spettro senza cancellarlo del tutto, lasciando allo stream RGB un residuo di segnale.
+- **Blur** e **downscale** sono i più **tollerati**: il ridimensionamento è quasi
+  innocuo (0.87–0.95) perché la pipeline già normalizza la scala; il blur degrada in
+  modo graduale (fino a 0.855) senza collassi.
+
+**Implicazione forense.** Il sistema è utilizzabile su materiale di buona qualità
+(JPEG ≥ q90, ridimensionato) ma **non** è affidabile su immagini fortemente
+ricompresse — lo scenario tipico dei social. La contromisura standard è la **JPEG
+augmentation in training** (ricompressione casuale delle immagini durante
+l'addestramento), non applicata qui: è il naturale sviluppo futuro (§8).
+
+> *Nota.* I valori di questa sezione provengono da un run di riferimento in cui la
+> baseline pulita è 0.961 (vedi §5.1 per la varianza tra run, ±pochi punti da
+> non-determinismo GPU). Ciò che conta è il **calo relativo**, stabile tra i run: il
+> profilo JPEG-fragile / resize-robusto è la conclusione qualitativa.
+
 ## 6. Analisi qualitativa dell'explainability
 
 Per un campione di test si riportano immagine RGB, spettro di Fourier, overlay
@@ -469,6 +514,10 @@ decisione *interpretabile* invece di mascherarla con artefatti inventati.
 - **Confound della risoluzione (§5.5a).** Identificato e mitigato con la risoluzione
   canonica (§3.1), ma da solo sposta poco le metriche: era una delle cause, non
   l'unica.
+- **Robustezza a post-processing (§5.8).** La detection tollera blur e ridimensionamento
+  ma è **fragile alla compressione JPEG**: crolla da 0.96 a **0.60 a q30**, perché la
+  quantizzazione DCT cancella gli artefatti di alta frequenza. Delimita l'uso pratico
+  (materiale poco compresso) e indica la JPEG-augmentation come priorità.
 - **Fedeltà del VLM.** Con un *system prompt* cauto e decoding deterministico (§6)
   l'agent **non inventa** più artefatti di frequenza e cita esplicitamente la
   possibilità di indizi di sorgente non visibili — coerente con ablation e LOGO. Resta
@@ -476,8 +525,8 @@ decisione *interpretabile* invece di mascherarla con artefatti inventati.
   verificata caso per caso (una versione precedente, non cauta, asseriva "griglie
   periodiche" inesistenti).
 - **Altri limiti:** dimensione contenuta del dataset; un solo dominio (volti);
-  robustezza a compressione/resize non valutata sistematicamente; fedeltà delle
-  spiegazioni del VLM da verificare (rischio di artefatti "plausibili" ma non reali).
+  fedeltà delle spiegazioni del VLM da verificare (rischio di artefatti "plausibili"
+  ma non reali).
 
 ## 8. Conclusioni e sviluppi futuri
 
@@ -492,16 +541,20 @@ origine distinti, e il modello ne memorizza la firma invece di apprendere la
 (recall 0.00 su SDXL). Il rovescio positivo è il **benchmark same-source** (§5.7):
 isolando la coppia real vs SDXL (stessa base FFHQ-256), la detection raggiunge 0.987
 e **sopravvive alla normalizzazione del colore**, prova che — a parità di sorgente —
-il modello coglie artefatti di sintesi genuini, non solo la firma del dataset. Il valore del lavoro è quindi metodologico: mostrare come si
+il modello coglie artefatti di sintesi genuini, non solo la firma del dataset. Un
+test di **robustezza** (§5.8) completa il quadro: la detection tollera blur e resize
+ma è fragile alla forte compressione JPEG (0.60 a q30), delimitandone l'uso pratico.
+Il valore del lavoro è quindi metodologico: mostrare come si
 smaschera un risultato troppo bello per essere vero.
 
 **Sviluppi futuri.** (i) Un benchmark *controllato* in cui i fake siano generati
 dalla **stessa** pipeline a partire dagli stessi reali (per scorporare generatore e
 sorgente); (ii) normalizzazione aggressiva (ricompressione JPEG uniforme, color
-matching) e augmentation che rompano le firme di sorgente; (iii) valutazione di
-robustezza (JPEG/resize/blur); (iv) fine-tuning leggero (LoRA) dei backbone e
-calibrazione della confidenza; (v) protocollo di valutazione *cross-source* come
-metrica primaria al posto dell'accuracy in-distribution.
+matching) e augmentation che rompano le firme di sorgente; (iii) **JPEG-augmentation
+in training** (ricompressione casuale delle immagini) per irrobustire la detection
+alla compressione, il punto debole emerso in §5.8; (iv) fine-tuning leggero (LoRA) dei
+backbone e calibrazione della confidenza; (v) protocollo di valutazione *cross-source*
+come metrica primaria al posto dell'accuracy in-distribution.
 
 ## Riferimenti
 
