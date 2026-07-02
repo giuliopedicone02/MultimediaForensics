@@ -2,7 +2,7 @@
 
 **Corso:** Multimedia Forensics — Laurea Magistrale (II anno), A.A. 2025-26 (UniCT)
 **Autore:** Giulio Pedicone
-**Data:** Giugno 2026
+**Data:** Luglio 2026
 
 ---
 
@@ -213,8 +213,10 @@ spiegazione coerente con le evidenze numeriche.
 ## 5. Risultati
 
 > **Nota sulla varianza tra run.** I valori riportati provengono da un singolo run
-> di riferimento. Pur fissando il seed, il training su GPU **non è perfettamente
-> deterministico** (kernel cuDNN non deterministici): rieseguendo la pipeline le
+> di riferimento. Pur fissando il seed e `cudnn.deterministic=True`, il training su
+> GPU **non è perfettamente deterministico**: il flag copre le sole convoluzioni
+> cuDNN, mentre altre primitive CUDA (es. riduzioni con operazioni atomiche in
+> virgola mobile) restano non deterministiche. Rieseguendo la pipeline le
 > metriche di detection/cascade oscillano tipicamente di alcuni punti (es. detection
 > 0.95–0.98 su run diversi) e il numero di falsi positivi sui *real* varia (in alcuni
 > run è zero). Le **conclusioni qualitative** del lavoro — confound di sorgente,
@@ -240,6 +242,9 @@ Per classe (test = 38 real, 114 fake): `real` precision 0.93 / recall 1.00;
 - Accuracy (sui soli fake): **0.991** (113/114).
 - Per generatore (F1): `stylegan` 0.99, `stylegan3` 1.00, `sdxl` 0.99.
 - Matrice di confusione tra generatori: quasi diagonale (un solo errore, 1 SDXL → StyleGAN).
+
+![Matrice di confusione dell'attribution (solo fake)](figures/cm_attribution.png)
+
 - ⚠️ Questo valore è **gonfiato dal confound di sorgente** (vedi §5.5b: il solo
   stream RGB attribuisce a ~1.00) e va letto alla luce del LOGO (§5.6).
 
@@ -402,8 +407,8 @@ augmentation in training** (ricompressione casuale delle immagini durante
 l'addestramento), non applicata qui: è il naturale sviluppo futuro (§8).
 
 > *Nota.* I valori di questa sezione provengono da un run di riferimento in cui la
-> baseline pulita è 0.961 (vedi §5.1 per la varianza tra run, ±pochi punti da
-> non-determinismo GPU). Ciò che conta è il **calo relativo**, stabile tra i run: il
+> baseline pulita è 0.961 (vedi la nota all'inizio di §5 sulla varianza tra run,
+> ±pochi punti da non-determinismo GPU). Ciò che conta è il **calo relativo**, stabile tra i run: il
 > profilo JPEG-fragile / resize-robusto è la conclusione qualitativa.
 
 ## 6. Analisi qualitativa dell'explainability

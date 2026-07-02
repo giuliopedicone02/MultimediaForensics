@@ -97,6 +97,12 @@ generatore template-based deterministico fornisce comunque una spiegazione coere
 
 - Accuracy di detection e attribution.
 - Matrici di confusione e classification report (`scikit-learn`).
+- **Esperimenti di controllo** (report §5.5–5.8): ablation RAW vs risoluzione
+  canonica e per singolo stream; generalizzazione *leave-one-generator-out*
+  (`engine.cross_generator_detection`); benchmark *same-source* real vs SDXL
+  (stessa base FFHQ-256) con controllo del colore; **robustezza a post-processing**
+  (JPEG, blur, resize, rumore) sul modello del run principale, degradazioni
+  applicate alla risoluzione canonica (sezione 7-quinquies del notebook).
 - Ispezione qualitativa: per alcuni campioni di test si mostrano immagine,
   spettro, Grad-CAM e la spiegazione generata.
 
@@ -107,8 +113,11 @@ YAML, embedding in cache. Vedi `dffa/utils/common.py` e `dffa/config.py`.
 
 ## 7. Estensioni possibili
 
-- Aggiungere generatori (StyleGAN-XL, diffusion: SDXL, Midjourney) → attribution
-  più ricca, cambiando solo `classes` in config.
+- Aggiungere altri generatori (StyleGAN-XL, Midjourney, FLUX) → attribution più
+  ricca, cambiando solo `classes` in config.
+- **JPEG-augmentation in training** (ricompressione casuale): la valutazione di
+  robustezza (report §5.8) mostra che la compressione è il punto debole.
 - Fine-tuning leggero (LoRA) dei backbone.
 - Calibrazione della confidenza (temperature scaling) per spiegazioni più affidabili.
-- Metriche di robustezza (JPEG, resize, blur) — tipiche della forensics.
+- Benchmark *controllato* con fake generati img2img dagli stessi reali, per
+  scorporare del tutto generatore e sorgente (report §8).

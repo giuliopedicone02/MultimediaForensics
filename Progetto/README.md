@@ -21,6 +21,7 @@ Pipeline forense multi-stream (RGB + spettro di Fourier → ResNet18) che **rile
 - **Classificatore multi-task** a tronco condiviso con due teste; attribution addestrata sui *soli* fake via `ignore_index=-1`; selezione del modello sulla **cascade accuracy** end-to-end.
 - **Explainability a due livelli**: Grad-CAM su entrambi gli stream (*dove* guarda la rete, nello spazio e in frequenza) + **agent VLM open** (Qwen2.5-VL, 4-bit) che produce la motivazione in linguaggio naturale; **fallback template-based deterministico** se manca la GPU.
 - **Controllo del confound da risoluzione**: tutte le immagini passano per una **risoluzione canonica** comune (stessa interpolazione) prima di RGB e Fourier, così il modello non può barare sulla "firma" del resampling; un'**ablation** dedicata (RAW vs canonica, e contributo dei singoli stream) quantifica il fenomeno.
+- **Valutazione critica, non solo accuracy**: test *leave-one-generator-out* (generalizzazione a generatori mai visti), **benchmark same-source** real vs SDXL (stessa base FFHQ-256, con controllo del colore) per isolare il segnale forense genuino dal confound di sorgente, e **robustezza a post-processing** (JPEG, blur, resize, rumore). I dettagli e la discussione onesta dei limiti sono nel [report](report/report.md) (§5.5–5.8).
 - **Riproducibilità**: seed globale, cuDNN deterministico, split stratificato, configurazione interamente serializzata in YAML.
 - **Download dataset lightweight** dal *datasets-server* di HuggingFace (endpoint `/rows`): niente parquet/tar interi.
 
@@ -135,7 +136,9 @@ seed: 42
 3. Esegui la cella "0. Bootstrap": su Colab fa clone + install + download dataset
 4. Esegui le celle in ordine:
    setup → config → dati → feature → training → valutazione →
-   Grad-CAM → spiegazione VLM → salvataggio risultati
+   ablation (confound risoluzione + stream) → LOGO → same-source →
+   robustezza post-processing → Grad-CAM → spiegazione VLM →
+   salvataggio risultati → figure ed esempi per il report
 ```
 
 La cella di bootstrap è **idempotente**: su Colab esegue `git clone`, installa le dipendenze e scarica i dati; in locale (dove `dffa` è già importabile) si salta da sola.
@@ -252,7 +255,9 @@ Progetto/
 ├── scripts/download_data.py      # download subset da HuggingFace (/rows)
 ├── notebooks/01_deepfake_forensics_colab.ipynb
 ├── docs/architecture.md          # dettaglio architetturale
-├── report/report.md              # relazione
+├── report/
+│   ├── report.md                 # relazione
+│   └── figures/                  # figure del report (versionate)
 ├── data/                         # dataset (NON versionato)
 └── results/                      # metriche, figure, cache (NON versionato)
 ```
@@ -263,6 +268,8 @@ Progetto/
 
 - Karras et al., *A Style-Based Generator Architecture for GANs* (StyleGAN), CVPR 2019.
 - Karras et al., *Alias-Free GAN* (StyleGAN3), NeurIPS 2021.
+- Podell et al., *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*, 2023.
+- Wang et al., *CNN-generated images are surprisingly easy to spot... for now*, CVPR 2020.
 - Frank et al., *Leveraging Frequency Analysis for Deep Fake Image Recognition*, ICML 2020.
 - Selvaraju et al., *Grad-CAM: Visual Explanations from Deep Networks*, ICCV 2017.
 - Bai et al., *Qwen2.5-VL Technical Report*, 2025.
