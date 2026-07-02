@@ -42,6 +42,15 @@ flowchart LR
     CAT --> MLP[MLP tronco condiviso]
     MLP --> DET[Testa Detection: real / fake]
     MLP --> ATT[Testa Attribution: StyleGAN / StyleGAN3 / SDXL]
+
+    classDef io   fill:#bbdefb,stroke:#1565c0,color:#1a1a1a
+    classDef step fill:#eceff1,stroke:#607d8b,color:#1a1a1a
+    classDef det  fill:#ffe0b2,stroke:#e65100,color:#1a1a1a
+    classDef attr fill:#ffccbc,stroke:#bf360c,color:#1a1a1a
+    class IMG io
+    class RGB,FFT,RN1,RN2,E1,E2,CAT,MLP step
+    class DET det
+    class ATT attr
 ```
 
 ### Inferenza a cascata
@@ -54,6 +63,18 @@ flowchart TD
     A --> O[Output: FAKE attribuito a StyleGAN / StyleGAN3 / SDXL]
     R --> X[Grad-CAM + Agent VLM: PERCHE]
     O --> X
+
+    classDef io   fill:#bbdefb,stroke:#1565c0,color:#1a1a1a
+    classDef det  fill:#ffe0b2,stroke:#e65100,color:#1a1a1a
+    classDef attr fill:#ffccbc,stroke:#bf360c,color:#1a1a1a
+    classDef stop fill:#cfd8dc,stroke:#455a64,color:#1a1a1a
+    classDef vlm  fill:#c8e6c9,stroke:#2e7d32,color:#1a1a1a
+    class START io
+    class D det
+    class A attr
+    class O io
+    class R stop
+    class X vlm
 ```
 
 L'agent VLM riceve immagine RGB, spettro di Fourier e overlay Grad-CAM **insieme** alle probabilità del classificatore, e produce una spiegazione che distingue la motivazione della *detection* da quella dell'*attribution*. Dettaglio completo in [`docs/architecture.md`](docs/architecture.md).
