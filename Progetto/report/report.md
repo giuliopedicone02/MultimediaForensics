@@ -27,7 +27,7 @@ vs SDXL generati dalla stessa base), la detection raggiunge 0.987 e **resta inva
 dopo la normalizzazione del colore**, indicando una capacità di rilevamento *genuina*
 (seppur specifica per SDXL). Un test di **robustezza a post-processing** mostra inoltre
 che la detection regge blur e ridimensionamento ma **crolla sotto forte compressione
-JPEG** (0.60 a q30), il che ne delimita l'uso pratico. Il contributo principale di
+JPEG** (0.58 a q30), il che ne delimita l'uso pratico. Il contributo principale di
 questo lavoro è quindi **metodologico**: identificare, misurare e discutere onestamente
 tali limiti (confound di sorgente, fragilità alla compressione), isolando con un
 benchmark controllato il segnale forense reale.
@@ -377,28 +377,29 @@ modello del run principale (nessun riaddestramento) è valutato su un test set
 **degradato**: ogni degradazione è applicata alla risoluzione **canonica (256)**, così
 tutte le classi subiscono la stessa alterazione e non si reintroduce il confound di
 risoluzione. Metrica: **detection accuracy** (real vs fake). Baseline pulita
-attraverso la stessa pipeline: **0.961**.
+attraverso la stessa pipeline: **0.980** (coincide con la detection di §5.1: la
+pipeline di degradazione non introduce di per sé alcuna alterazione).
 
 ![Robustezza della detection a post-processing](figures/robustness.png)
 
 | Degradazione | Lieve | → | → | Severa |
 |--------------|------:|---:|---:|------:|
-| **JPEG** (quality 95→30) | 0.954 | 0.816 (q75) | 0.651 (q50) | **0.599** (q30) |
-| **Blur gaussiano** (σ 0.5→2.0 px) | 0.961 | 0.928 | 0.875 | 0.855 |
-| **Downscale** (fattore 0.75→0.25) | 0.934 | 0.947 | 0.941 | 0.868 |
-| **Rumore gaussiano** (σ 5→30) | 0.809 | 0.757 | 0.750 | 0.750 |
+| **JPEG** (quality 95→30) | 0.967 | 0.763 (q75) | 0.599 (q50) | **0.579** (q30) |
+| **Blur gaussiano** (σ 0.5→2.0 px) | 0.974 | 0.914 | 0.862 | 0.822 |
+| **Downscale** (fattore 0.75→0.25) | 0.941 | 0.928 | 0.941 | 0.888 |
+| **Rumore gaussiano** (σ 5→30) | 0.803 | 0.763 | 0.750 | 0.750 |
 
 **Lettura.**
 
-- **JPEG è la minaccia principale.** Fino a q90 la detection regge (0.947), ma sotto
-  q75 crolla: **0.65 a q50**, **0.60 a q30**, ormai poco sopra il caso. La
-  quantizzazione DCT distrugge proprio gli **artefatti periodici di alta frequenza**
-  su cui si appoggia lo stream di Fourier — il segnale forense più fragile.
+- **JPEG è la minaccia principale.** A q95 la detection regge (0.967) e a q90 cede
+  poco (0.928), ma sotto q75 crolla: **0.60 a q50**, **0.58 a q30**, ormai poco sopra
+  il caso. La quantizzazione DCT distrugge proprio gli **artefatti periodici di alta
+  frequenza** su cui si appoggia lo stream di Fourier — il segnale forense più fragile.
 - **Il rumore** abbatte subito l'accuratezza ma poi **satura a ~0.75**: sporca lo
   spettro senza cancellarlo del tutto, lasciando allo stream RGB un residuo di segnale.
 - **Blur** e **downscale** sono i più **tollerati**: il ridimensionamento è quasi
-  innocuo (0.87–0.95) perché la pipeline già normalizza la scala; il blur degrada in
-  modo graduale (fino a 0.855) senza collassi.
+  innocuo (0.89–0.94) perché la pipeline già normalizza la scala; il blur degrada in
+  modo graduale (fino a 0.822) senza collassi.
 
 **Implicazione forense.** Il sistema è utilizzabile su materiale di buona qualità
 (JPEG ≥ q90, ridimensionato) ma **non** è affidabile su immagini fortemente
@@ -406,10 +407,11 @@ ricompresse — lo scenario tipico dei social. La contromisura standard è la **
 augmentation in training** (ricompressione casuale delle immagini durante
 l'addestramento), non applicata qui: è il naturale sviluppo futuro (§8).
 
-> *Nota.* I valori di questa sezione provengono da un run di riferimento in cui la
-> baseline pulita è 0.961 (vedi la nota all'inizio di §5 sulla varianza tra run,
-> ±pochi punti da non-determinismo GPU). Ciò che conta è il **calo relativo**, stabile tra i run: il
-> profilo JPEG-fragile / resize-robusto è la conclusione qualitativa.
+> *Nota.* I valori provengono dallo stesso run definitivo delle sezioni precedenti
+> (notebook, sezione 7-quinquies): la baseline pulita coincide infatti con la
+> detection di §5.1 (0.980). Vale comunque la nota all'inizio di §5 sulla varianza
+> tra run: ciò che conta è il **calo relativo**, stabile — il profilo
+> JPEG-fragile / resize-robusto è la conclusione qualitativa.
 
 ## 6. Analisi qualitativa dell'explainability
 
@@ -520,7 +522,7 @@ decisione *interpretabile* invece di mascherarla con artefatti inventati.
   canonica (§3.1), ma da solo sposta poco le metriche: era una delle cause, non
   l'unica.
 - **Robustezza a post-processing (§5.8).** La detection tollera blur e ridimensionamento
-  ma è **fragile alla compressione JPEG**: crolla da 0.96 a **0.60 a q30**, perché la
+  ma è **fragile alla compressione JPEG**: crolla da 0.98 a **0.58 a q30**, perché la
   quantizzazione DCT cancella gli artefatti di alta frequenza. Delimita l'uso pratico
   (materiale poco compresso) e indica la JPEG-augmentation come priorità.
 - **Fedeltà del VLM.** Con un *system prompt* cauto e decoding deterministico (§6)
@@ -548,7 +550,7 @@ isolando la coppia real vs SDXL (stessa base FFHQ-256), la detection raggiunge 0
 e **sopravvive alla normalizzazione del colore**, prova che — a parità di sorgente —
 il modello coglie artefatti di sintesi genuini, non solo la firma del dataset. Un
 test di **robustezza** (§5.8) completa il quadro: la detection tollera blur e resize
-ma è fragile alla forte compressione JPEG (0.60 a q30), delimitandone l'uso pratico.
+ma è fragile alla forte compressione JPEG (0.58 a q30), delimitandone l'uso pratico.
 Il valore del lavoro è quindi metodologico: mostrare come si
 smaschera un risultato troppo bello per essere vero.
 
