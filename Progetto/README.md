@@ -31,17 +31,17 @@ Pipeline forense multi-stream (RGB + spettro di Fourier → ResNet18) che **rile
 
 ```mermaid
 flowchart LR
-    IMG[Immagine volto 224x224] --> RGB[Stream RGB]
-    IMG --> FFT[FFT 2D - log magnitude]
-    RGB --> RN1[ResNet18 ImageNet - congelata]
-    FFT --> RN2[ResNet18 ImageNet - congelata]
-    RN1 --> E1[embedding 512-d]
-    RN2 --> E2[embedding 512-d]
-    E1 --> CAT[concat 1024-d]
+    IMG["Immagine volto<br/>224×224"] --> RGB["Stream RGB"]
+    IMG --> FFT["FFT 2D<br/>(log-magnitude)"]
+    RGB --> RN1["ResNet18 ImageNet<br/>(congelata)"]
+    FFT --> RN2["ResNet18 ImageNet<br/>(congelata)"]
+    RN1 --> E1["embedding<br/>512-d"]
+    RN2 --> E2["embedding<br/>512-d"]
+    E1 --> CAT["concat<br/>1024-d"]
     E2 --> CAT
-    CAT --> MLP[MLP tronco condiviso]
-    MLP --> DET[Testa Detection: real / fake]
-    MLP --> ATT[Testa Attribution: StyleGAN / StyleGAN3 / SDXL]
+    CAT --> MLP["MLP<br/>tronco condiviso"]
+    MLP --> DET["Testa Detection<br/>real / fake"]
+    MLP --> ATT["Testa Attribution<br/>StyleGAN · StyleGAN3 · SDXL"]
 
     classDef io   fill:#bbdefb,stroke:#1565c0,color:#1a1a1a
     classDef step fill:#eceff1,stroke:#607d8b,color:#1a1a1a
@@ -57,11 +57,11 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    START[Embedding 1024-d] --> D{Detection}
-    D -->|real| R[Output: REAL - stop, niente attribution]
-    D -->|fake| A[Testa Attribution sui soli generatori]
-    A --> O[Output: FAKE attribuito a StyleGAN / StyleGAN3 / SDXL]
-    R --> X[Grad-CAM + Agent VLM: PERCHE]
+    START["Embedding 1024-d"] --> D{"Detection"}
+    D -->|real| R["Output: REAL<br/>stop, niente attribution"]
+    D -->|fake| A["Testa Attribution<br/>sui soli generatori"]
+    A --> O["Output: FAKE<br/>StyleGAN · StyleGAN3 · SDXL"]
+    R --> X["Grad-CAM + Agent VLM<br/>(il perché)"]
     O --> X
 
     classDef io   fill:#bbdefb,stroke:#1565c0,color:#1a1a1a
