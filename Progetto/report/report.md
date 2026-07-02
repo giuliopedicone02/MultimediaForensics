@@ -416,7 +416,10 @@ l'addestramento), non applicata qui: è il naturale sviluppo futuro (§8).
 ## 6. Analisi qualitativa dell'explainability
 
 Per un campione di test si riportano immagine RGB, spettro di Fourier, overlay
-Grad-CAM (figura) e la spiegazione generata dall'agent VLM (`source = vlm`).
+Grad-CAM (figura) e la spiegazione generata dall'agent VLM (`source = vlm`). Le
+citazioni sono **verbatim** dall'output del notebook (tagli indicati con […]);
+si noti che il modello usa impropriamente *«certificazione»* per *confidenza* —
+un artefatto linguistico del VLM, lasciato intatto per fedeltà.
 
 ### Esempio FAKE correttamente rilevato (attribuito a StyleGAN)
 
@@ -434,7 +437,7 @@ inventa** artefatti e arriva alla stessa conclusione:
 > «L'immagine originale mostra una persona con capelli lunghi e una maglietta gialla.
 > La mappa Grad-CAM evidenzia le zone più importanti per il classificatore,
 > concentrandosi sul viso e sulle orecchie della persona. Le predizioni del
-> classificatore indicano che l'immagine è falsa con una certezza del 99,95% […].
+> classificatore indicano che l'immagine è falsa con una certificazione di 99,95% […].
 > **Non sono presenti griglie periodiche o incoerenze di texture che potrebbero
 > suggerire artefatti.** […] Il modello potrebbe basarsi su indizi di sorgente non
 > visibili a occhio, come statistiche di colore, compressione o risoluzione legate
@@ -458,9 +461,10 @@ VLM resta cauta e non forza la presenza di artefatti:
 
 > «L'immagine originale mostra una coppia in posizione abbracciata. Il spettro di
 > Fourier non evidenzia particolari artefatti o incoerenze […]. La predizione del
-> classificatore è stata classificata come "real" con una certezza molto alta (0.999)
-> […]. Questo suggerisce che l'immagine sia verosimilmente reale, ma non esclude
-> completamente la possibilità di artefatti invisibili o di indizi non visibili.»
+> classificatore è stata classificata come "real" con una certificazione molto alta
+> (0.999) […]. Questo suggerisce che l'immagine sia verosimilmente reale, ma non
+> esclude completamente la possibilità di artefatti invisibili o di indici non
+> visibili.»
 > *(fonte: Qwen2.5-VL)*
 
 ### Caso al limite della soglia
@@ -477,8 +481,8 @@ resta onesto e non inventa artefatti:
 > «L'immagine originale mostra un soggetto con occhiali e un gesto pensante. Il spettro
 > di Fourier non evidenzia particolari artefatti o incoerenze significative. La mappa
 > Grad-CAM mostra una concentrazione di colori rossi intorno al viso del soggetto […].
-> Le predizioni del classificatore confermano che l'immagine è reale, con una certezza
-> del 67% […]. Non è possibile attribuire l'immagine a nessun generatore specifico
+> Le predizioni del classificatore confermano che l'immagine è reale, con una
+> certificazione del 67% […]. Non è possibile attribuire l'immagine a nessun generatore specifico
 > basandosi solo sulla visualizzazione.» *(fonte: Qwen2.5-VL)*
 
 Questo caso illustra in modo concreto il tema centrale del lavoro: vicino alla soglia
