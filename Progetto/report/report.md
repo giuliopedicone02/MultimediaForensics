@@ -111,7 +111,7 @@ flowchart TD
 
     G --> H["StyleGAN · StyleGAN3 · SDXL"]
 
-    F --> I["3 · VLM Qwen2.5-VL<br/>spiegazione in linguaggio naturale"]
+    F --> I["3 · VLM Qwen2.5-VL<br/>spiegazione in<br/>linguaggio naturale"]
     H --> I
 
     I --> J["Output finale:<br/>perché real/fake<br/>perché quel generatore"]
