@@ -454,6 +454,8 @@ un artefatto linguistico del VLM, lasciato intatto per fedeltà.
 
 ### Esempio FAKE correttamente rilevato (attribuito a StyleGAN)
 
+![Esempio: RGB, spettro di Fourier, Grad-CAM](figures/example_panel.png)
+
 ![Grad-CAM RGB e Fourier](figures/gradcam.png)
 
 Il volto è **fotorealistico**: a occhio non si distinguono artefatti di sintesi. Il
