@@ -164,7 +164,10 @@ def train_classifier(
 
     history = {"train_loss": [], "val_loss": [], "val_det_acc": [],
                "val_attr_acc": [], "val_cascade_acc": []}
-    best_acc, best_state = -1.0, None
+    best_acc, best_state, best_epoch = -1.0, None, -1
+    # early-stopping: epoche consecutive senza miglioramento della cascade-acc
+    patience = cfg.early_stopping_patience or 0
+    epochs_no_improve = 0
 
     for epoch in range(cfg.epochs):
         model.train()
@@ -198,8 +201,18 @@ def train_classifier(
         # selezione sul cascade (end-to-end), la metrica che conta davvero
         if val["cascade_acc"] > best_acc:
             best_acc = val["cascade_acc"]
+            best_epoch = epoch
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            # stop appena si superano `patience` epoche senza miglioramenti: il
+            # modello riportato resta comunque il best-checkpoint (epoca `best_epoch`)
+            if patience and epochs_no_improve >= patience:
+                break
 
+    history["best_epoch"] = best_epoch
+    history["stopped_epoch"] = epoch
     if best_state is not None:
         model.load_state_dict(best_state)
     return model, history

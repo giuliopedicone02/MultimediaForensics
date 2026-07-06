@@ -58,7 +58,12 @@ class Config:
     # --- classificatore multi-task ---
     hidden_dim: int = 256
     dropout: float = 0.3
-    epochs: int = 30
+    epochs: int = 30                    # tetto massimo di epoche
+    # Early-stopping: se la cascade-acc di validazione non migliora per
+    # `early_stopping_patience` epoche consecutive, il training si ferma. Insieme
+    # alla selezione del best-checkpoint evita di addestrare oltre il minimo di
+    # validazione (dove la val-loss risale → overfitting dell'MLP). None/0 = off.
+    early_stopping_patience: Optional[int] = 8
     batch_size: int = 32
     lr: float = 1e-3
     weight_decay: float = 1e-4

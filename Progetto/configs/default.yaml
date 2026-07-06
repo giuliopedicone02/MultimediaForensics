@@ -22,7 +22,8 @@ fourier_clip_pct: 99.0     # percentile di clipping dello spettro
 # --- classificatore multi-task ---
 hidden_dim: 256
 dropout: 0.3
-epochs: 30
+epochs: 30                 # tetto massimo
+early_stopping_patience: 8 # stop se la cascade-acc di val non migliora per N epoche (null/0 = off)
 batch_size: 32
 lr: 0.001
 weight_decay: 0.0001
