@@ -96,25 +96,25 @@ linguaggio naturale entrambe le decisioni.
 
 ```mermaid
 flowchart TD
-    A[Foto di un volto] --> B{Pre-processing<br/>risoluzione canonica}
+    A["Foto di un volto"] --> B{"Pre-processing<br/>risoluzione canonica"}
 
-    B --> C1[Stream RGB<br/>colori e texture]
-    B --> C2[Stream Fourier<br/>artefatti di frequenza]
+    B --> C1["Stream RGB<br/>colori e texture"]
+    B --> C2["Stream Fourier<br/>artefatti di frequenza"]
 
-    C1 --> D[ResNet18 congelata<br/>embedding 1024-d]
+    C1 --> D["ResNet18 congelata<br/>embedding 1024-d"]
     C2 --> D
 
-    D --> E{1 - DETECTION<br/>real o fake?}
+    D --> E{"1 · DETECTION<br/>real o fake?"}
 
-    E -->|REAL| F[STOP<br/>nessuna attribution]
-    E -->|FAKE| G{2 - ATTRIBUTION<br/>quale generatore?}
+    E -->|REAL| F["STOP<br/>nessuna attribution"]
+    E -->|FAKE| G{"2 · ATTRIBUTION<br/>quale generatore?"}
 
-    G --> H[StyleGAN / StyleGAN3 / SDXL]
+    G --> H["StyleGAN · StyleGAN3 · SDXL"]
 
-    F --> I[3 - VLM Qwen2.5-VL<br/>spiegazione in linguaggio naturale]
+    F --> I["3 · VLM Qwen2.5-VL<br/>spiegazione in linguaggio naturale"]
     H --> I
 
-    I --> J[Output finale:<br/>perche real/fake<br/>perche quel generatore]
+    I --> J["Output finale:<br/>perché real/fake<br/>perché quel generatore"]
 
     %% fill chiaro + testo scuro su OGNI nodo: leggibile sia in tema chiaro sia scuro
     classDef step fill:#eceff1,stroke:#607d8b,color:#1a1a1a
